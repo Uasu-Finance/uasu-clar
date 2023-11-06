@@ -1,0 +1,2 @@
+cd ~/hubgit/dlclink/dlc-stack/attestor
+STACKS_API_KEY=abcdef1234567890 PRIVATE_KEY=d655b2523bcd65e34889725c73064feb17ceb796831c0e111ba1a552b0f31b3901 docker compose up
