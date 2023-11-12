@@ -60,7 +60,7 @@ plan:
             clarity-version: 2
         - contract-publish:
             contract-name: sample-contract-loan-v1-3
-            expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            expected-sender: STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6
             cost: 139950
             path: examples/sample-contract-loan-v1.clar
             anchor-block-only: true
