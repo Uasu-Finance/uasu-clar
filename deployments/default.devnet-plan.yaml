@@ -58,6 +58,8 @@ plan:
             path: contracts/dlc-stablecoin.clar
             anchor-block-only: true
             clarity-version: 2
+    - id: 3
+      transactions:
         - contract-publish:
             contract-name: uasu-sbtc-loan-v1
             expected-sender: STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6
