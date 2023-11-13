@@ -27,7 +27,7 @@ export const protocolPrivateKey = config.protocolPrivateKey;
 export const openDLCNFT = 'open-dlc';
 export const attestorNFT = 'dlc-attestors';
 export const registeredContractNFTName = `registered-contract`;
-export const exampleContractName = 'sample-contract-loan-v1-3';
+export const exampleContractName = 'uasu-sbtc-loan-v1';
 export const contractName = 'dlc-manager-v1';
 export const contractFullName = `${contractAddress}.${contractName}`;
 

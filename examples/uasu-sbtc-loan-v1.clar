@@ -37,7 +37,7 @@
 (define-constant contract-owner tx-sender)
 
 ;; Contract name bindings
-(define-constant sample-protocol-contract .sample-contract-loan-v1-3)
+(define-constant sample-protocol-contract .uasu-sbtc-loan-v1)
 
 (define-data-var protocol-wallet-address principal 'ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP)
 

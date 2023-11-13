@@ -64,10 +64,10 @@ plan:
     - id: 3
       transactions:
         - contract-publish:
-            contract-name: sample-contract-loan-v1
+            contract-name: uasu-sbtc-loan-v1
             expected-sender: STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6
             cost: 133530
-            path: examples/sample-contract-loan-v1.clar
+            path: examples/uasu-sbtc-loan-v1.clar
             anchor-block-only: true
             clarity-version: 2
       epoch: '2.3'
@@ -78,7 +78,7 @@ plan:
             expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             method: register-contract
             parameters:
-              - "'STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6.sample-contract-loan-v1"
+              - "'STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6.uasu-sbtc-loan-v1"
             cost: 6000
       epoch: '2.3'
     - id: 5

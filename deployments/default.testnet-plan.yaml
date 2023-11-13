@@ -59,10 +59,10 @@ plan:
             anchor-block-only: true
             clarity-version: 2
         - contract-publish:
-            contract-name: sample-contract-loan-v1-3
+            contract-name: uasu-sbtc-loan-v1
             expected-sender: ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3
             cost: 702726825
-            path: examples/sample-contract-loan-v1.clar
+            path: examples/uasu-sbtc-loan-v1.clar
             anchor-block-only: true
             clarity-version: 2
       epoch: '2.3'

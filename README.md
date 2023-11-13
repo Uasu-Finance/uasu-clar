@@ -16,7 +16,7 @@ This contract acts to feed the outcome of the DLC. By using a smart contract for
 
 # How to interact with this contract
 
-An example lending/borrowing contract is provided in `/examples/sample-contract-loan-v1.clar`. This contract is a simple example of how to interact with the DLC Manager contract.
+An example lending/borrowing contract is provided in `/examples/uasu-sbtc-loan-v1.clar`. This contract is a simple example of how to interact with the DLC Manager contract.
 
 ## Clarity Traits
 

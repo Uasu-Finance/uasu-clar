@@ -33,7 +33,7 @@ const BTChex = 'BTC';
 // const UUID = UUID;
 const nftAssetContract = 'open-dlc';
 const dlcManagerContract = 'dlc-manager-v1';
-const sampleProtocolContract = 'sample-contract-loan-v1-3';
+const sampleProtocolContract = 'uasu-sbtc-loan-v1';
 const stableCoinContract = 'dlc-stablecoin';
 const stableCoinDecimals = 6;
 
@@ -90,7 +90,7 @@ function openLoan(
   block.receipts[0].result.expectOk();
 
   const setupLoanPrintEvent = block.receipts[0].events.find((event: any) => {
-    return event.contract_event && event.contract_event.contract_identifier.includes('sample-contract-loan-v1-3');
+    return event.contract_event && event.contract_event.contract_identifier.includes('uasu-sbtc-loan-v1');
   });
 
   assertEquals(typeof setupLoanPrintEvent, 'object');
@@ -108,7 +108,7 @@ function openLoan(
   let matchRegex = assertMatch(
     createDLCPrintEvent.contract_event.value,
     new RegExp(
-      /^{attestors: \[{dns: "1.2.3.4"}, {dns: "9.10.11.12"}\], callback-contract: STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6.sample-contract-loan-v1-3, creator: ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG, event-source: "dlclink:create-dlc:v1", protocol-wallet: ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP, uuid: 0x[a-fA-F0-9]{64}}$/
+      /^{attestors: \[{dns: "1.2.3.4"}, {dns: "9.10.11.12"}\], callback-contract: STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6.uasu-sbtc-loan-v1, creator: ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG, event-source: "dlclink:create-dlc:v1", protocol-wallet: ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP, uuid: 0x[a-fA-F0-9]{64}}$/
     )
   );
 
