@@ -235,7 +235,7 @@
     (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
     (map-set loans loan-id (merge loan { vault-loan: (+ vault-loan-amount amount) }))
-    (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-stablecoin transfer amount sample-protocol-contract (get owner loan) none)) err-stablecoin-issue-failed)
+    (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount sample-protocol-contract (get owner loan) none)) err-stablecoin-issue-failed)
   )
 )
 
@@ -248,7 +248,7 @@
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
     (asserts! (>= vault-loan-amount amount) err-balance-negative)
     (map-set loans loan-id (merge loan { vault-loan: (- vault-loan-amount amount) }))
-    (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-stablecoin transfer amount (get owner loan) sample-protocol-contract none)) err-stablecoin-repay-failed)
+    (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount (get owner loan) sample-protocol-contract none)) err-stablecoin-repay-failed)
   )
 )
 
