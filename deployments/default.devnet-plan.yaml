@@ -45,13 +45,6 @@ plan:
             anchor-block-only: true
             clarity-version: 2
         - contract-publish:
-            contract-name: callback-contract-v1
-            expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            cost: 11300
-            path: tests/callback-contract-mock-v1.clar
-            anchor-block-only: true
-            clarity-version: 2
-        - contract-publish:
             contract-name: dlc-stablecoin
             expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             cost: 17270
