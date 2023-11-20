@@ -137,5 +137,5 @@
 )
 
 (define-read-only (verify-txid-exists-on-burn-chain (txid (buff 32)) (burn-chain-height uint) (merkle-proof (list 14 (buff 32))) (tx-index uint) (block-header (buff 80)))
-    (contract-call? .clarity-bitcoin-mini-deploy was-txid-mined burn-chain-height txid block-header { tx-index: tx-index, hashes: merkle-proof})
+    (contract-call? .clarity-bitcoin-mini was-txid-mined burn-chain-height txid block-header { tx-index: tx-index, hashes: merkle-proof})
 )
