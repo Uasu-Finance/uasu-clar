@@ -303,10 +303,14 @@
 (define-read-only (check-liquidation (loan-id uint) (btc-price uint))
   (let (
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (collateral-value (get-collateral-value (get vault-collateral loan) btc-price))
-    (strike-price (/ (* (get vault-loan loan) (get liquidation-ratio loan)) u100000000))
+    (collateral (get vault-collateral loan))
+    (borrowed (get vault-loan loan))
     )
-    (ok (<= collateral-value strike-price))
+    (begin (
+      (if (eq u0 borrowed)
+          (ok false)
+          (ok (>= collateral borrowed))
+    )))
   )
 )
 
@@ -322,7 +326,7 @@
   (let (
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
-    (payout-ratio (unwrap! (get-payout-ratio loan-id btc-price) err-cant-unwrap))
+    (payout-ratio (unwrap! (payout-ratio loan-id) err-cant-unwrap))
     )
     (begin
       (try! (set-status loan-id status-pre-liquidated))
@@ -355,5 +359,22 @@
         (ok u0)
       )
     )
+  )
+)
+
+(define-public (payout-ratio (loan-id uint))
+  (let (
+    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+    (borrowed-amount (get vault-loan loan))
+    (total-locked (get vault-collateral loan))
+    (liquidation-fee (/ (* u1000 borrowed-amount) u10000))
+    (borrowed-plus-liquidation (+ part liquidation-fee))
+  )
+  (begin (
+    (if (>= borrowed-plus-liquidation total-locked)
+        (ok u10000)
+    )
+    (ok (- u10000 (/ (* borrowed-plus-liquidation u1000) total-locked)))
+  ))
   )
 )
