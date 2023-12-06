@@ -75,7 +75,7 @@
   (ok (var-get liquidation_ratio))
 )
 
-(define-data-var liquidation_fee uint u75) ;; let's set it to 50% of the difference between the present value and the Bitcoin in collateral when the liquidation function is successfully called: 75% paid to the tx-sender, the other 25% paid to the contract
+(define-data-var liquidation_fee uint u75) ;; let's set it to 75% of the difference between the present value and the Bitcoin in collateral when the liquidation function is successfully called: 75% paid to the tx-sender, the other 25% paid to the contract
 
 ;; read the liquidation fee
 (define-read-only (get-liquidation-fee (loan-id uint))
@@ -320,7 +320,7 @@
   )
 )
 
-;; A model to calculate the time passing by and deducint the interest amount
+;; A model to calculate the time passing by and deducing the interest amount
 ;; Repay Interest First, then repay borrowed-amounts
 ;; Cumulative Interest Calculation (not Sequential)
 (define-constant seconds-per-year u31536000)
@@ -556,7 +556,7 @@
       (try! (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer liquidation-amount sample-protocol-contract liquidator none))) ;; err-transfer-sbtc) ;; liquidation-fee should be renamed to liquidation-fee-percentage
 
       ;; ;; here we're doing it before getting the collateral-vault from bitcoin to sBTC
-      ;; (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
+      (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
       (ok true)
   )
 )
@@ -575,6 +575,22 @@
       (try! (set-status loan-id status-pre-liquidated))
       (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid u10000))) err-contract-call-failed)
     )
+  )
+)
+
+(define-public (emergency-liquidate (loan-id uint))
+  (let
+      (
+        (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+        (vault-collateral (get vault-collateral loan))
+        (present-value (unwrap! (present-value-loan loan-id) err-present-value-loan))
+      )
+      ;; if present value loan is greater than vault-collateral, then emergency liquidation is possible
+      (asserts! (<= vault-collateral present-value) err-doesnt-need-liquidation)
+      (print { liquidator: tx-sender, type: emergency-liquidation })
+
+      (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
+      (ok true)
   )
 )
 
