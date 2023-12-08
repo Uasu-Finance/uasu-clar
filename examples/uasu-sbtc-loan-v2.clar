@@ -293,26 +293,30 @@
     (loan-id (unwrap! (get-loan-id-by-uuid uuid) err-cant-get-loan-id-by-uuid ))
     ;; (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     )
-    (asserts! (unwrap! (check-liquidation loan-id btc-price) err-cant-unwrap-check-liquidation) err-doesnt-need-liquidation)
+    (asserts! (unwrap! (check-liquidation loan-id) err-cant-unwrap-check-liquidation) err-doesnt-need-liquidation)
     (print { liquidator: tx-sender })
     (ok (unwrap! (liquidate-loan loan-id btc-price) err-cant-unwrap-liquidate-loan))
   )
 )
 
-;; @desc Helper function to calculate if a loan is underwater at a given BTC price
-(define-read-only (check-liquidation (loan-id uint) (btc-price uint))
-  (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (collateral (get vault-collateral loan))
-    (borrowed (get vault-loan loan))
-    )
-    (begin (
-      (if (eq u0 borrowed)
-          (ok false)
-          (ok (>= collateral borrowed))
-    )))
-  )
+(define-read-only (check-liquidation (loan-id uint)) 
+  (ok true)
 )
+
+;; @desc Helper function to calculate if a loan is underwater at a given BTC price
+;; (define-read-only (check-liquidation (loan-id uint))
+;;   (let (
+;;     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+;;     (collateral (get vault-collateral loan))
+;;     (borrowed (get vault-loan loan))
+;;     )
+;;     (begin (
+;;       (if (eq u0 borrowed)
+;;           (ok false)
+;;           (ok (>= collateral borrowed))
+;;     )))
+;;   )
+;; )
 
 ;; (define-public (payout-ratio (loan-id uint))
 ;;   (let (
