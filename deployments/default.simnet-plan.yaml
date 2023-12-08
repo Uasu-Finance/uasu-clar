@@ -89,4 +89,9 @@ plan:
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: examples/uasu-sbtc-loan-v1.clar
             clarity-version: 2
+        - emulated-contract-publish:
+            contract-name: uasu-sbtc-testing
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: examples/uasu-sbtc-testing.clar
+            clarity-version: 2
       epoch: '2.3'

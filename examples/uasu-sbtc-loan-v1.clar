@@ -40,7 +40,9 @@
 (define-constant ten-to-power-12 u1000000000000)
 (define-constant ten-to-power-16 u10000000000000000)
 
-(define-constant list-borrowed-empty (list {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0}))
+(define-constant list-borrowed-empty (list ))
+
+;; {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0} {amount: u0, b-height: u0}
 
 ;; Contract owner
 (define-constant contract-owner tx-sender)
@@ -245,7 +247,7 @@
       (if (> left-over borrowed-amount)
         (begin
           (var-set left-helper (- left-over borrowed-amount))
-          {amount: u0, b-height: u0}
+          {amount: u0, b-height: u0} ;; this is what we need to prune from the list
         )
         (begin
           (var-set left-helper u0)
@@ -255,6 +257,17 @@
     )
   )
 )
+(define-private (func-filter-non-zero (item {amount: uint, b-height: uint}))
+  (let
+    (
+      (amount (get amount item))
+      (b-height (get b-height item))
+    )
+    (not (and (is-eq amount u0) (is-eq b-height u0)))
+  )
+)
+
+
 (define-private (func-deduce-interests (borrowed-data {amount: uint, b-height: uint}))
   (let
     (
@@ -305,7 +318,7 @@
       (if (> repaying-amount total-interests)
           (begin
           (var-set left-helper left-after-paying-interest)
-          (map-set loans loan-id (merge loan { borrowed-amounts: (map func-deduce-left current-borrowed-amounts-only) }))
+          (map-set loans loan-id (merge loan { borrowed-amounts: (filter func-filter-non-zero (map func-deduce-left current-borrowed-amounts-only)) }))
           )
           (begin
           (var-set left-helper (* left-after-paying-interest u100)) ;; 10^2 precision like interests
@@ -587,7 +600,7 @@
       )
       ;; if present value loan is greater than vault-collateral, then emergency liquidation is possible
       (asserts! (<= vault-collateral present-value) err-doesnt-need-liquidation)
-      (print { liquidator: tx-sender, type: emergency-liquidation })
+      (print { liquidator: tx-sender, type: "emergency-liquidation" })
 
       (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
       (ok true)
