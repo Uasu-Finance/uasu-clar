@@ -314,22 +314,22 @@
   )
 )
 
-(define-public (payout-ratio (loan-id uint))
-  (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (borrowed-amount (get vault-loan loan))
-    (total-locked (get vault-collateral loan))
-    (liquidation-fee (/ (* u1000 borrowed-amount) u10000))
-    (borrowed-plus-liquidation (+ part liquidation-fee))
-  )
-  (begin (
-    (if (>= borrowed-plus-liquidation total-locked)
-        (ok u10000)
-    )
-    (ok (/ (* borrowed-plus-liquidation u1000) total-locked))
-  ))
-  )
-)
+;; (define-public (payout-ratio (loan-id uint))
+;;   (let (
+;;     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+;;     (borrowed-amount (get vault-loan loan))
+;;     (total-locked (get vault-collateral loan))
+;;     (liquidation-fee (/ (* u1000 borrowed-amount) u10000))
+;;     (borrowed-plus-liquidation (+ part liquidation-fee))
+;;   )
+;;   (begin (
+;;     (if (>= borrowed-plus-liquidation total-locked)
+;;         (ok u10000)
+;;     )
+;;     (ok (/ (* borrowed-plus-liquidation u1000) total-locked))
+;;   ))
+;;   )
+;; )
 
 ;; @desc Calculating loan collateral value for a given btc-price * (10**8), with pennies precision.
 ;; Since the deposit is in Sats, after multiplication we first shift by 2, then ushift by 16 to get pennies precision ($12345.67 = u1234567)
@@ -343,7 +343,7 @@
   (let (
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
-    (payout-ratio (unwrap! (payout-ratio loan-id) err-cant-unwrap))
+    (payout-ratio (unwrap! (get-payout-ratio loan-id btc-price) err-cant-unwrap))
     )
     (begin
       (try! (set-status loan-id status-pre-liquidated))
