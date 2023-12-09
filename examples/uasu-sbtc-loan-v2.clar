@@ -300,40 +300,38 @@
 )
 
 (define-read-only (check-liquidation (loan-id uint)) 
-  (ok true)
+  (let
+    (
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (collateral (get vault-collateral loan))
+      (borrowed (get vault-loan loan))
+    )
+    (ok (not (is-eq u0 borrowed)))
+  )
 )
 
-;; @desc Helper function to calculate if a loan is underwater at a given BTC price
-;; (define-read-only (check-liquidation (loan-id uint))
-;;   (let (
-;;     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-;;     (collateral (get vault-collateral loan))
-;;     (borrowed (get vault-loan loan))
-;;     )
-;;     (begin (
-;;       (if (eq u0 borrowed)
-;;           (ok false)
-;;           (ok (>= collateral borrowed))
-;;     )))
-;;   )
-;; )
 
-;; (define-public (payout-ratio (loan-id uint))
-;;   (let (
-;;     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-;;     (borrowed-amount (get vault-loan loan))
-;;     (total-locked (get vault-collateral loan))
-;;     (liquidation-fee (/ (* u1000 borrowed-amount) u10000))
-;;     (borrowed-plus-liquidation (+ part liquidation-fee))
-;;   )
-;;   (begin (
-;;     (if (>= borrowed-plus-liquidation total-locked)
-;;         (ok u10000)
-;;     )
-;;     (ok (/ (* borrowed-plus-liquidation u1000) total-locked))
-;;   ))
-;;   )
-;; )
+;; @desc Returns the resulting payout-ratio.
+;; This value is sent to the Oracle system for signing a point on the linear payout curve.
+;; using uints, this means return values between 0-10000 (0.00-100.00)
+;; 0.00 means the borrower gets back its deposit, 100.00 means the entire collateral gets taken by the protocol.
+(define-read-only (payout-ratio (loan-id uint))
+  (let 
+  (
+    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+    (borrowed-amount (get vault-loan loan))
+    (total-locked (get vault-collateral loan))
+    (liquidation-fee (/ (* u1000 borrowed-amount) u10000))
+    (borrowed-plus-liquidation (+ borrowed-amount liquidation-fee))
+  )
+  (begin 
+    (if (>= borrowed-plus-liquidation total-locked)
+        (ok u10000)
+        (ok (/ (* borrowed-plus-liquidation u1000) total-locked))
+    )
+  )
+  )
+)
 
 ;; @desc Calculating loan collateral value for a given btc-price * (10**8), with pennies precision.
 ;; Since the deposit is in Sats, after multiplication we first shift by 2, then ushift by 16 to get pennies precision ($12345.67 = u1234567)
@@ -347,38 +345,11 @@
   (let (
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
-    (payout-ratio (unwrap! (get-payout-ratio loan-id btc-price) err-cant-unwrap))
+    (payout-ratio (unwrap! (payout-ratio loan-id) err-cant-unwrap))
     )
     (begin
       (try! (set-status loan-id status-pre-liquidated))
       (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid payout-ratio))) err-contract-call-failed)
-    )
-  )
-)
-
-;; @desc Returns the resulting payout-ratio at the given btc-price (shifted by 10**8).
-;; This value is sent to the Oracle system for signing a point on the linear payout curve.
-;; using uints, this means return values between 0-10000 (0.00-100.00)
-;; 0.00 means the borrower gets back its deposit, 100.00 means the entire collateral gets taken by the protocol.
-(define-read-only (get-payout-ratio (loan-id uint) (btc-price uint))
-  (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (collateral-value (get-collateral-value (get vault-collateral loan) btc-price))
-    ;; the ratio the protocol has to sell to liquidators:
-    (sell-to-liquidators-ratio (/ (shift-value (get vault-loan loan) ten-to-power-12) collateral-value))
-    ;; the additional liquidation-fee percentage is calculated into the result. Since it is shifted by 10000, we divide:
-    (payout-ratio-precise (+ sell-to-liquidators-ratio (* (/ sell-to-liquidators-ratio u10000) (get liquidation-fee loan))))
-    ;; The final payout-ratio is a truncated version:
-    (payout-ratio (unshift-value payout-ratio-precise ten-to-power-12))
-    )
-    ;; We cap result to be between the desired bounds
-    (begin
-      (if (unwrap! (check-liquidation loan-id btc-price) err-cant-unwrap)
-          (if (>= payout-ratio (shift-value u1 ten-to-power-4))
-            (ok (shift-value u1 ten-to-power-4))
-            (ok payout-ratio))
-        (ok u0)
-      )
     )
   )
 )
