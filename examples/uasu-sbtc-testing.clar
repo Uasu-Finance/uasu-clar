@@ -98,6 +98,16 @@
   )
 )
 
+(define-read-only (get-borrowed-amounts (loan-id uint))
+      (let
+      (
+        (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (current-borrowed-amounts (get borrowed-amounts loan))
+      )
+      (ok current-borrowed-amounts)
+      )
+)
+
 
 ;; ---------------------------------------------------------
 ;; Data maps
@@ -352,13 +362,34 @@
     (time-difference-in-years  (/ (* time-difference-in-seconds u10000) seconds-per-year)) ;; 10^4 scale factor 1
     ;; (compound-factor (pow (+ u1 (/ (/ (var-get interest) u10000) u1)) (* u1 time-difference-in-years)))
 
-    (interest-times-time-in-a-year (* time-difference-in-years (var-get interest))) ;; interest has a 10^4 scale factor 2 ;; -> 10^8 scale factor
-    (interests (/ (* borrowed-amount interest-times-time-in-a-year) u1000000)) ;; interest-only has a 10^2 scale factor
+    (interest-factor (* time-difference-in-years (var-get interest))) ;; 10^8 scale factor because interest is 10^4 scale
+    (interests (/ (* borrowed-amount interest-factor) u100000000)) ;; interest-only has a 10^2 scale factor
   )
+    (print { borrowed-amount: borrowed-amount, borrowed-at: borrowed-at, current-block-height: current-block-height, time-difference-in-seconds: time-difference-in-seconds, time-difference-in-years: time-difference-in-years, interest-factor: interest-factor, interests: interests })
     interests ;; scale factor of 10^8 to have it in the unit of borrowed amounts
   )
 )
 
+(define-public (get-interests-in-public (borrowed-data (tuple (amount uint) (b-height uint))))
+  (let (
+    (borrowed-amount (get amount borrowed-data))
+    (borrowed-at (get b-height borrowed-data))
+    (current-block-height block-height)
+    ;; (current-block-height u500) ;; for testing purposes
+    (time-difference-in-seconds (* (- current-block-height borrowed-at) seconds-per-block))
+    (time-difference-in-years  (/ (* time-difference-in-seconds u10000) seconds-per-year)) ;; 10^4 scale factor 1
+    ;; (compound-factor (pow (+ u1 (/ (/ (var-get interest) u10000) u1)) (* u1 time-difference-in-years)))
+
+    (interest-factor (* time-difference-in-years (var-get interest))) ;; 10^8 scale factor because interest is 10^4 scale
+    (interests (/ (* borrowed-amount interest-factor) u100000000)) ;; interest is in base unit
+    ;; if borrowed amount in sats then we divide by 10^8 like above
+
+
+  )
+    (print { borrowed-amount: borrowed-amount, borrowed-at: borrowed-at, current-block-height: current-block-height, time-difference-in-seconds: time-difference-in-seconds, time-difference-in-years: time-difference-in-years, interest-factor: interest-factor, interests: interests })
+    (ok interests) ;; scale factor of 10^8 to have it in the unit of borrowed amounts
+  )
+)
 ;; (define-public (RafaCalcul (a uint) (b uint))
 ;;   (ok (/ (* a u10000) b)) ;; this gives cents: 27 is in fact 0.0027% - for testing Clarity precision
 ;; )
@@ -374,6 +405,7 @@
       (cumulative-interests (fold + list-of-interests u0))
       (total-interests (+ cumulative-interests (get interest-adjust loan)))
     )
+    (print { list-of-interests: list-of-interests, cumulative-interests: cumulative-interests, total-interests: total-interests })
     (ok total-interests)
   )
 )
@@ -431,6 +463,7 @@
 ;; - Calls the dlc-manager-contract's create-dlc function to initiate the creation
 ;; The DLC Contract will call back into the provided 'target' contract with the resulting UUID (and the provided loan-id).
 ;; See scripts/setup-loan.ts for an example of calling it.
+;; Let's have btc-deposit in satoshis when we call setup-loan
 (define-public (setup-loan (btc-deposit uint) (attestor-ids (buff 32)))
     (let
       (
@@ -491,17 +524,20 @@
     (
         (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract)) ;; get the loan
         (present-value (unwrap! (present-value-loan loan-id) err-cant-unwrap))
+        (present-borrow (+ present-value amount))
         ;; get liquidation ratio from loan
         (liquidation-ratio (get liquidation-ratio loan))
         ;; get vault-collateral from loan
-        ;; (vault-collateral (get vault-collateral loan)) ;; testing we don't need this Rafa
+        (vault-collateral (get vault-collateral loan)) ;; testing we don't need this Rafa
     )
         (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
         ;; (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa
         ;; they cannot borrow if vault-collateral =< Liquidation ratio * present-value
-        ;; (asserts! (> vault-collateral (* liquidation-ratio present-value)) err-cannot-borrow-liquidation-ratio) ;; testing we don't need this Rafa
+        (print { vault-collateral: (* u10000 vault-collateral), liquidation-ratio: liquidation-ratio, present-value: present-value, present-borrow: present-borrow, indicator: (* liquidation-ratio present-borrow) })
+        (asserts! (> (* u10000 vault-collateral) (* liquidation-ratio present-borrow)) err-cannot-borrow-liquidation-ratio)
         (unwrap! (record-borrowed-amount loan-id amount) err-cant-record-ba);; record the borrowed amount and block height
         (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount sample-protocol-contract (get owner loan) none))) err-transfer-sbtc) ;; send the txsender their borrowed sbtc
+        ;; (ok {lration: liquidation-ratio, p-value: present-value, v-collateral: vault-collateral, liquidation-value: (* liquidation-ratio present-value)})
         ;; (ok true)
     )
 )

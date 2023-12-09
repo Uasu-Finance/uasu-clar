@@ -31,6 +31,11 @@ path = 'examples/uasu-sbtc-loan-v1.clar'
 clarity_version = 2
 epoch = 2.3
 
+[contracts.uasu-sbtc-testing]
+path = 'examples/uasu-sbtc-loan-v1.clar'
+clarity_version = 2
+epoch = 2.3
+
 [repl.analysis]
 passes = []
 
