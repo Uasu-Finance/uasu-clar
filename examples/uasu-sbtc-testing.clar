@@ -333,7 +333,7 @@
     )
       (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
       ;; (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa
-      (asserts! (> present-value repaying-amount) err-balance-negative)
+      (asserts! (>= present-value repaying-amount) err-balance-negative)
       ;; now we compare the repaying amount to the cumulative interests
       ;; if repaying amount > cumulative interests, we set the b-height to current block height and simply need to reduce the amount
       ;; if repaying amount < cumulative interests, we we set the b-height to current block height and we add the remaining interest due to the interest-adjust
@@ -342,12 +342,10 @@
       (if (< repaying-amount current-interest-adjust)
           (map-set loans loan-id (merge loan { interest-adjust: (- current-interest-adjust repaying-amount) }))
           (begin
-          ;; else we merge interest-adjust to u0 and we continue with repaying-left = repaying-amount - current-interest-adjust
-            (map-set loans loan-id (merge loan { interest-adjust: u0 })) ;; we wiped current-adjust here and playing with remaining repaying-amount *1
             (if (> (- repaying-amount current-interest-adjust) cumulative-interests)
                 (begin
                 (var-set left-helper (- (- repaying-amount current-interest-adjust) cumulative-interests))
-                (map-set loans loan-id (merge loan { borrowed-amounts: (filter func-filter-non-zero (map func-deduce-left current-borrowed-amounts-only)) }))
+                (map-set loans loan-id (merge loan { borrowed-amounts: (filter func-filter-non-zero (map func-deduce-left current-borrowed-amounts-only)), interest-adjust: u0 }))
                 )
                 (begin
                 (var-set left-helper (- repaying-amount current-interest-adjust)) ;; error here corrected Rafa
