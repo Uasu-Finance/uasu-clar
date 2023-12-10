@@ -647,7 +647,7 @@
       (asserts! (<= vault-collateral present-value) err-doesnt-need-liquidation)
       (print { liquidator: tx-sender, type: "emergency-liquidation" })
 
-      (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
+      ;; (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan) ;; reestablish after testing Rafa
       (ok true)
   )
 )
