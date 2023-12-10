@@ -223,6 +223,17 @@
   )
 )
 
+(define-public (print-loan (loan-id uint))
+  (let
+    (
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+    )
+    ;; print it out
+    (print { loan: loan })
+    (ok loan)
+  )
+)
+
 ;; ---------------------------------------------------------
 ;; Private and Public Functions - Rafa's Experiment
 ;; record-borrowed-amount, repay, get-total-interests and get-total-pinicipal are private functions
@@ -284,6 +295,7 @@
       (left-over (var-get left-helper)) ;; this is the remaining repaying amount
       (borrowed-amount (get amount borrowed-data))
       (amount-interest (get-interests borrowed-data))
+      (current-interest-helper (var-get interest-helper))
     )
       (if (> left-over amount-interest)
         (begin
@@ -292,7 +304,7 @@
         )
         (begin
           (var-set left-helper u0)
-          (var-set interest-helper (- amount-interest left-over))
+          (var-set interest-helper (+ current-interest-helper (- amount-interest left-over))) ;; here there is a problem
           {amount: borrowed-amount, b-height: block-height}
         )
       )
@@ -339,12 +351,11 @@
                 )
                 (begin
                 (var-set left-helper (- repaying-amount current-interest-adjust)) ;; error here corrected Rafa
+                (var-set interest-helper u0)
                 ;; this is where we have to wipe out the b-heights up to a certain borrowed amount tuple
-                  (map-set loans loan-id (merge loan { borrowed-amounts: (map func-deduce-interests current-borrowed-amounts) }))
-                  (print { borrowed-amounts: (get borrowed-amounts (unwrap! (get-loan loan-id) err-unknown-loan-contract)) })
-                  ;; we need to add interest-helper to whatever was already there in interest-adjust - No we don't Rafa!
-                  (map-set loans loan-id (merge loan { interest-adjust: (var-get interest-helper) })) ;; *1 therefore new current-interst-adjust is u0 and no need to add it here
-                  (print { interest-helper: (var-get interest-helper) })
+                  (map-set loans loan-id (merge loan { borrowed-amounts: (map func-deduce-interests current-borrowed-amounts), interest-adjust: (var-get interest-helper)  }))
+                  ;; (print { borrowed-amounts: (get borrowed-amounts (unwrap! (get-loan loan-id) err-unknown-loan-contract)) })
+                  (print {loan: (unwrap! (map-get? loans loan-id) err-unknown-loan-contract)})  ;; *1 therefore new current-interest-adjust is u0 and no need to add it here
                   (var-set interest-helper u0) ;; set it back to 0
                 )
             )
@@ -355,7 +366,6 @@
       (ok repaying-amount)
   )
 )
-
 ;; A model to calculate the time passing by and deducing the interest amount
 ;; Repay Interest First, then repay borrowed-amounts
 ;; Cumulative Interest Calculation (not Sequential)
@@ -368,7 +378,7 @@
     (borrowed-amount (get amount borrowed-data))
     (borrowed-at (get b-height borrowed-data))
     (current-block-height block-height)
-    ;; (current-block-height u500) ;; for testing purposes
+
     (time-difference-in-seconds (* (- current-block-height borrowed-at) seconds-per-block))
     (time-difference-in-years  (/ (* time-difference-in-seconds u10000) seconds-per-year)) ;; 10^4 scale factor 1
     ;; (compound-factor (pow (+ u1 (/ (/ (var-get interest) u10000) u1)) (* u1 time-difference-in-years)))
@@ -403,7 +413,7 @@
 )
 
 ;; Function to calculate total interest owed on all borrowing amounts
-(define-read-only (get-total-interests (loan-id uint))
+(define-public (get-total-interests (loan-id uint))
   (let
     (
       (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
