@@ -265,7 +265,7 @@
       (left-over (var-get left-helper)) ;; this is repaying amount - totat-interests
     )
     (begin
-      (if (> left-over borrowed-amount)
+      (if (>= left-over borrowed-amount) ;; put b-height to u0 when they repay the entire present-value
         (begin
           (var-set left-helper (- left-over borrowed-amount))
           {amount: u0, b-height: u0} ;; this is what we need to prune from the list
