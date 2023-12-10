@@ -251,7 +251,7 @@
 (define-private (func-deduce-left (borrowed-amount uint))
   (let
     (
-      (left-over (var-get left-helper))
+      (left-over (var-get left-helper)) ;; this is repaying amount - totat-interests
     )
     (begin
       (if (> left-over borrowed-amount)
@@ -281,9 +281,9 @@
 (define-private (func-deduce-interests (borrowed-data {amount: uint, b-height: uint}))
   (let
     (
-      (left-over (var-get left-helper))
+      (left-over (var-get left-helper)) ;; this is the remaining repaying amount
       (borrowed-amount (get amount borrowed-data))
-      (amount-interest (get-interests borrowed-data)) ;; 10^2 precision
+      (amount-interest (get-interests borrowed-data))
     )
       (if (> left-over amount-interest)
         (begin
@@ -317,7 +317,7 @@
       (total-borrowed (fold + list-of-borrowed-amounts u0))
       ;; we need to calculate the present value of the borrowed amount
       (present-value (+ total-borrowed total-interests))
-      (left-after-paying-interest (- repaying-amount total-interests))
+      ;; (left-after-paying-interest (- repaying-amount total-interests)) ;; this cannot be here Rafa testing else underflow is possible
     )
       (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
       ;; (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa
@@ -325,23 +325,34 @@
       ;; now we compare the repaying amount to the cumulative interests
       ;; if repaying amount > cumulative interests, we set the b-height to current block height and simply need to reduce the amount
       ;; if repaying amount < cumulative interests, we we set the b-height to current block height and we add the remaining interest due to the interest-adjust
-      (if (> repaying-amount total-interests)
+      ;; first we repay the interest-adjust if it's not u0
+      ;; if repaying-amount < current-interest-adjust then merge interest-adjust to u0 in loan and exit
+      (if (< repaying-amount current-interest-adjust)
+          (map-set loans loan-id (merge loan { interest-adjust: (- current-interest-adjust repaying-amount) }))
           (begin
-          (var-set left-helper left-after-paying-interest)
-          (map-set loans loan-id (merge loan { borrowed-amounts: (filter func-filter-non-zero (map func-deduce-left current-borrowed-amounts-only)) }))
-          )
-          (begin
-          (var-set left-helper (* left-after-paying-interest u100)) ;; 10^2 precision like interests
-           ;; this is where we have to wipe out the b-heights up to a certain borrowed amount tuple
-            (map-set loans loan-id (merge loan { borrowed-amounts: (map func-deduce-interests current-borrowed-amounts) }))
-            ;; we need to add interest-helper to whatever was already there in interest-adjust
-            (map-set loans loan-id (merge loan { interest-adjust: (+ current-interest-adjust  (/ (var-get interest-helper) u100)) }))
-            (var-set interest-helper u0) ;; set it back to 0
+          ;; else we merge interest-adjust to u0 and we continue with repaying-left = repaying-amount - current-interest-adjust
+            (map-set loans loan-id (merge loan { interest-adjust: u0 })) ;; we wiped current-adjust here and playing with remaining repaying-amount *1
+            (if (> (- repaying-amount current-interest-adjust) cumulative-interests)
+                (begin
+                (var-set left-helper (- (- repaying-amount current-interest-adjust) cumulative-interests))
+                (map-set loans loan-id (merge loan { borrowed-amounts: (filter func-filter-non-zero (map func-deduce-left current-borrowed-amounts-only)) }))
+                )
+                (begin
+                (var-set left-helper (- repaying-amount current-interest-adjust)) ;; error here corrected Rafa
+                ;; this is where we have to wipe out the b-heights up to a certain borrowed amount tuple
+                  (map-set loans loan-id (merge loan { borrowed-amounts: (map func-deduce-interests current-borrowed-amounts) }))
+                  (print { borrowed-amounts: (get borrowed-amounts (unwrap! (get-loan loan-id) err-unknown-loan-contract)) })
+                  ;; we need to add interest-helper to whatever was already there in interest-adjust - No we don't Rafa!
+                  (map-set loans loan-id (merge loan { interest-adjust: (var-get interest-helper) })) ;; *1 therefore new current-interst-adjust is u0 and no need to add it here
+                  (print { interest-helper: (var-get interest-helper) })
+                  (var-set interest-helper u0) ;; set it back to 0
+                )
+            )
           )
       )
       ;; Don't forget to repay the contract the repaying-amount ;; testing we DO need this Rafa!
-              (try! (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer left-after-paying-interest (get owner loan) sample-protocol-contract none))
-      (ok left-after-paying-interest)
+      (try! (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer repaying-amount (get owner loan) sample-protocol-contract none))
+      (ok repaying-amount)
   )
 )
 
@@ -390,9 +401,6 @@
     (ok interests) ;; scale factor of 10^8 to have it in the unit of borrowed amounts
   )
 )
-;; (define-public (RafaCalcul (a uint) (b uint))
-;;   (ok (/ (* a u10000) b)) ;; this gives cents: 27 is in fact 0.0027% - for testing Clarity precision
-;; )
 
 ;; Function to calculate total interest owed on all borrowing amounts
 (define-read-only (get-total-interests (loan-id uint))
@@ -409,20 +417,6 @@
     (ok total-interests)
   )
 )
-
-;; (define-read-only (rafaFolding) ;; for testing purposes
-;;   (let
-;;     (
-;;       (list1 (list {amount: u10, b-height: u1} {amount: u30, b-height: u2}))
-;;       (list-of-amounts (map get-amount list1))
-;;       (total-principal (fold + list-of-amounts u0))
-;;     )
-;;     ;; (ok total-principal)
-;;     ;; print { list-of-amounts: list-of-amounts }
-;;     (print { list-of-amounts: list-of-amounts })
-;;     (ok total-principal)
-;;     )
-;; )
 
 
 ;; Function that takes (tuple (amount uint) (b-height uint)) in and spits out the amount
@@ -443,7 +437,7 @@
   )
 )
 
-(define-public (present-value-loan (loan-id uint))
+(define-read-only (get-present-value-loan (loan-id uint))
   (let
     (
     (total-principal (unwrap! (get-total-principal loan-id) err-cant-unwrap))
@@ -523,7 +517,7 @@
   (let
     (
         (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract)) ;; get the loan
-        (present-value (unwrap! (present-value-loan loan-id) err-cant-unwrap))
+        (present-value (unwrap! (get-present-value-loan loan-id) err-cant-unwrap))
         (present-borrow (+ present-value amount))
         ;; get liquidation ratio from loan
         (liquidation-ratio (get liquidation-ratio loan))
@@ -548,13 +542,14 @@
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     ;; get borrowed-amounts
     (borrowed-amounts (get borrowed-amounts loan))
-    (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
+    ;; (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap)) ;; unnecssary for testing Rafa
     )
     (begin
       ;; here we need to asserts that borrowed-amounts is equal to list-borrowed-empty
       (asserts! (is-eq borrowed-amounts list-borrowed-empty) err-not-repaid)
       (try! (set-status loan-id status-pre-repaid))
-      (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid u0)) err-contract-call-failed) ;; u0 ~ user gets their Bitcoins back (no liquidation event)
+      ;; (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid u0)) err-contract-call-failed) ;; u0 ~ user gets their Bitcoins back (no liquidation event) ;; unnecessary for testing Rafa
+      (ok true) ;; unnecessary for testing Rafa
     )
   )
 )
@@ -595,7 +590,7 @@
         ;; get the liquidation-fee
         (liquidation-fee (get liquidation-fee loan))
 
-        (present-value (unwrap! (present-value-loan loan-id) err-present-value-loan))
+        (present-value (unwrap! (get-present-value-loan loan-id) err-present-value-loan))
         ;; the difference between vault-collateral and present-value-loan is at stake
         ;; the protocol will sell the difference to liquidators
         (liquidation-amount (unwrap! (ok (* (- vault-collateral present-value) liquidation-ratio)) err-cant-unwrap)) ;; if nobody liquidates this becomes negative and then it becomes bad debt!
@@ -638,7 +633,7 @@
       (
         (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
         (vault-collateral (get vault-collateral loan))
-        (present-value (unwrap! (present-value-loan loan-id) err-present-value-loan))
+        (present-value (unwrap! (get-present-value-loan loan-id) err-present-value-loan))
       )
       ;; if present value loan is greater than vault-collateral, then emergency liquidation is possible
       (asserts! (<= vault-collateral present-value) err-doesnt-need-liquidation)
