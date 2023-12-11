@@ -28,11 +28,11 @@
 
 ;; Status Enum
 (define-constant status-ready "ready")                    ;; setup-loan sets status-ready (ok)
-(define-constant status-funded "funded")                  ;; set-status-funded - anyone can call it (NOT okay)
+(define-constant status-funded "funded")                  ;; set-status-funded - Limit this to dlc-manager-contract
 (define-constant status-pre-repaid "pre-repaid")          ;; close-loan sets status-pre-repaid - only loan owner can call it (ok)
-(define-constant status-repaid "repaid")                  ;; post-close-dlc-handler sets status-repaid ;; anyone can call it (corrected!)
-(define-constant status-pre-liquidated "pre-liquidated")  ;; liquidate-loan sets status-pre-liquidated
-(define-constant status-liquidated "liquidated")          ;; post-close-dlc-handler sets status-liquidated ;; same (corrected!)
+(define-constant status-repaid "repaid")                  ;; post-close-dlc-handler sets status-repaid ;; Limit this to dlc-manager-contract
+(define-constant status-pre-liquidated "pre-liquidated")  ;; liquidate-loan sets status-pre-liquidated ;; anyone can call it (ok)
+(define-constant status-liquidated "liquidated")          ;; post-close-dlc-handler sets status-liquidated ;; Limit this to dlc-manager-contract
 
 (define-constant ten-to-power-2 u100)
 (define-constant ten-to-power-4 u10000)
@@ -549,7 +549,7 @@
         (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
         ;; (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa ;; we can only borrow when it's in status-funded
         ;; they cannot borrow if vault-collateral =< Liquidation ratio * present-value
-        (print { vault-collateral: (* u10000 vault-collateral), liquidation-ratio: liquidation-ratio, present-value: present-value, present-borrow: present-borrow, indicator: (* liquidation-ratio present-borrow) })
+        (print { vault-collateral: vault-collateral, liquidation-ratio: liquidation-ratio, present-value: present-value, present-borrow: present-borrow, indicator: (/ (* liquidation-ratio present-borrow) u100) })
         (asserts! (> vault-collateral (/ (* liquidation-ratio present-borrow) u100)) err-cannot-borrow-liquidation-ratio) ;; this is right now, you can't borrow if vault-collateral >= liquidation-ratio * present-borrow
         ;; let's print it here: vault collateral and present-borrow and present borrow times liquidation-ratio/100
         (print { vault-collateral: vault-collateral, present-borrow: present-borrow, indicator: (/ (* liquidation-ratio present-borrow) u100) })
@@ -629,7 +629,7 @@
       (if (>= vault-collateral present-value)
         (begin ;; the loan is not underwater
             ;; assert that liquidation-amount is positive
-            (asserts! (>= vault-collateral (/ (* present-value liquidation-ratio) u100)) err-doesnt-need-liquidation) ;; LR = u105% = Collat / PV
+            (asserts! (<= vault-collateral (/ (* present-value liquidation-ratio) u100)) err-doesnt-need-liquidation) ;; LR = u105% = Collat / PV
             (asserts! (>= vault-collateral present-value) err-protocol-under-water) ;; this is useless
             ;; pay the liquidator the liquidation-amount before the protocol receives the collateral-vault from bitcoin to sBTC?
             (print { liquidator: tx-sender })
@@ -650,7 +650,6 @@
               )
         )
         (begin ;; the loan is underwater
-            (asserts! (>= vault-collateral (/ (* present-value liquidation-ratio) u100)) err-doesnt-need-liquidation)
             (emergency-liquidate loan-id) ;; the borrower isn't incentivize to repay if the loan is under water
             ;; we could use liquidate-loan directly here...
         )
@@ -688,6 +687,7 @@
       (print { liquidator: tx-sender, type: "emergency-liquidation" })
 
       (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
+      (ok true)
   )
 )
 ;; do not allow loan-setup if user has a loan under water
