@@ -121,6 +121,19 @@
     (ok amount)
   )
 )
+
+;; let's read what my liquidation level is
+(define-read-only (get-liquidation-level (loan-id uint))
+  (let
+    (
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (vault-collateral (get vault-collateral loan))
+      (liquidation-ratio (get liquidation-ratio loan))
+      (liquidation-level (* (/ vault-collateral liquidation-ratio) u100))
+    )
+    (ok liquidation-level)
+  )
+)
 ;; ---------------------------------------------------------
 ;; Data maps
 ;; ---------------------------------------------------------
@@ -545,12 +558,14 @@
         (liquidation-ratio (get liquidation-ratio loan))
         ;; get vault-collateral from loan
         (vault-collateral (get vault-collateral loan)) ;; testing we don't need this Rafa
+        ;; get liquidation level
+        (liquidation-level (* (/ vault-collateral liquidation-ratio) u100))
     )
         (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
         ;; (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa ;; we can only borrow when it's in status-funded
         ;; they cannot borrow if vault-collateral =< Liquidation ratio * present-value
         (print { vault-collateral: vault-collateral, liquidation-ratio: liquidation-ratio, present-value: present-value, present-borrow: present-borrow, indicator: (/ (* liquidation-ratio present-borrow) u100) })
-        (asserts! (> vault-collateral (/ (* liquidation-ratio present-borrow) u100)) err-cannot-borrow-liquidation-ratio) ;; this is right now, you can't borrow if vault-collateral >= liquidation-ratio * present-borrow
+        (asserts! (< present-borrow liquidation-level) err-cannot-borrow-liquidation-ratio) ;; this is right now, you can't borrow if vault-collateral >= liquidation-ratio * present-borrow
         ;; let's print it here: vault collateral and present-borrow and present borrow times liquidation-ratio/100
         (print { vault-collateral: vault-collateral, present-borrow: present-borrow, indicator: (/ (* liquidation-ratio present-borrow) u100) })
 
@@ -630,7 +645,6 @@
         (begin ;; the loan is not underwater
             ;; assert that liquidation-amount is positive
             (asserts! (<= vault-collateral (/ (* present-value liquidation-ratio) u100)) err-doesnt-need-liquidation) ;; LR = u105% = Collat / PV
-            (asserts! (>= vault-collateral present-value) err-protocol-under-water) ;; this is useless
             ;; pay the liquidator the liquidation-amount before the protocol receives the collateral-vault from bitcoin to sBTC?
             (print { liquidator: tx-sender })
             ;; if the protocol's 25% margin doesn't make up for the operations, the protocol loses money
@@ -641,6 +655,7 @@
                   (begin
                     (try! (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer (/ (* (- vault-collateral present-value) liquidation-fee) u100) sample-protocol-contract liquidator none)));; liquidation-fee should be renamed to liquidation-fee-percentage
                     (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
+
                     (ok true)
                   )
                   (begin
