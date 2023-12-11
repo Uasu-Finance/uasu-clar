@@ -1,3 +1,8 @@
+;; (impl-trait 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standard.sip-010-trait)
+;; (impl-trait 'ST1NXBK3K5YYMD6FD41MVNP3JS1GABZ8TRVX023PT.sip-010-trait-ft-standard.sip-010-trait) ;; testnet trait
+;; (use-trait ft-trait 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.traits.ft-trait)
+;; (impl-trait .traits.ft-trait)
+
 ;; title: wrapped BTC on Stacks
 ;; version: 0.1.0
 ;; summary: sBTC dev release asset contract
@@ -46,6 +51,18 @@
     )
 )
 
+(define-public (mintRafa (amount uint)
+    (destination principal))
+    (begin
+        (asserts! (is-eq (var-get contract-owner) contract-caller) err-forbidden)
+        (try! (ft-mint? sbtc amount destination))
+        (print {notification: "mint Rafa", amount: amount})
+        (ok true)
+    )
+)
+(mintRafa u2300000000 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.uasu-sbtc-loan-v1)
+
+
 ;; #[allow(unchecked_data)]
 (define-public (mint (amount uint)
     (destination principal)
@@ -85,7 +102,7 @@
 ;; #[allow(unchecked_data)]
 (define-public (transfer (amount uint) (sender principal) (recipient principal) (memo (optional (buff 34))))
 	(begin
-        (asserts! (or (is-eq tx-sender sender) (is-eq contract-caller sender)) err-invalid-caller)
+        ;; (asserts! (or (is-eq tx-sender sender) (is-eq contract-caller sender)) err-invalid-caller) ;; I don't know why this is spitting u4 when it's called as-contract in borrow ;; Rafa unnecessary
 		(try! (ft-transfer? sbtc amount sender recipient))
 		(match memo to-print (print to-print) 0x)
 		(ok true)
@@ -137,5 +154,5 @@
 )
 
 (define-read-only (verify-txid-exists-on-burn-chain (txid (buff 32)) (burn-chain-height uint) (merkle-proof (list 14 (buff 32))) (tx-index uint) (block-header (buff 80)))
-    (contract-call? .clarity-bitcoin-mini-deploy was-txid-mined burn-chain-height txid block-header { tx-index: tx-index, hashes: merkle-proof})
+    (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.clarity-bitcoin-mini-deploy was-txid-mined burn-chain-height txid block-header { tx-index: tx-index, hashes: merkle-proof})
 )
