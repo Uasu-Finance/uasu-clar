@@ -24,14 +24,15 @@
 (define-constant err-cant-record-ba (err u1018))
 (define-constant err-present-value-loan (err u1019))
 (define-constant err-protocol-under-water (err u1020))
+(define-constant err-liquidation-fee-too-high (err u1021))
 
 ;; Status Enum
-(define-constant status-ready "ready")
-(define-constant status-funded "funded")
-(define-constant status-pre-repaid "pre-repaid")
-(define-constant status-repaid "repaid")
-(define-constant status-pre-liquidated "pre-liquidated")
-(define-constant status-liquidated "liquidated")
+(define-constant status-ready "ready")                    ;; setup-loan sets status-ready (ok)
+(define-constant status-funded "funded")                  ;; set-status-funded - Limit this to dlc-manager-contract
+(define-constant status-pre-repaid "pre-repaid")          ;; close-loan sets status-pre-repaid - only loan owner can call it (ok)
+(define-constant status-repaid "repaid")                  ;; post-close-dlc-handler sets status-repaid ;; Limit this to dlc-manager-contract
+(define-constant status-pre-liquidated "pre-liquidated")  ;; liquidate-loan sets status-pre-liquidated ;; anyone can call it (ok)
+(define-constant status-liquidated "liquidated")          ;; post-close-dlc-handler sets status-liquidated ;; Limit this to dlc-manager-contract
 
 (define-constant ten-to-power-2 u100)
 (define-constant ten-to-power-4 u10000)
@@ -54,6 +55,7 @@
 (define-data-var interest uint u150) ;; 1.50% interest
 
 (define-data-var protocol-wallet-address principal 'ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP)
+(define-data-var dlc-manager-contract principal 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1) ;; add an assertions to post-close-dlc-handler to check that the dlc-manager-contract is the one calling it
 
 (define-public (set-protocol-wallet-address (address principal))
   (begin
@@ -63,7 +65,7 @@
   )
 )
 
-(define-data-var liquidation_ratio uint u10500);; this is too wide because sBTC ~ BTC + premium and premium gets arbitraged away; borrow up to ~95.23 of 100 in collateral
+(define-data-var liquidation_ratio uint u105);; sBTC ~ BTC + premium and premium gets arbitraged away; borrow up to ~95.23 of 100 in collateral
 
 (define-public (set-liquidation-ratio (ratio uint))
   (begin
@@ -93,12 +95,45 @@
 (define-public (set-liquidation-fee (fee uint))
   (begin
     (asserts! (is-eq contract-owner tx-sender) err-unauthorised)
+    (asserts! (<= fee u100) err-liquidation-fee-too-high)
     (var-set liquidation_fee fee)
     (ok fee)
   )
 )
 
+(define-read-only (get-borrowed-amounts (loan-id uint))
+      (let
+      (
+        (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+        (current-borrowed-amounts (get borrowed-amounts loan))
+      )
+      (ok current-borrowed-amounts)
+      )
+)
 
+(define-data-var minimum-liquidation-amount uint u100) ;; on mainnet change this to u100,000 sats
+
+(define-public (set-minimum-liquidation-amount (amount uint))
+  (begin
+    (asserts! (is-eq contract-owner tx-sender) err-unauthorised)
+    ;; (asserts! (> amount u100000) err-minimum-liquidation-amount-too-low) ;; leaving this open but owner of contract can attack here?
+    (var-set minimum-liquidation-amount amount)
+    (ok amount)
+  )
+)
+
+;; let's read what my liquidation level is
+(define-read-only (get-liquidation-level (loan-id uint))
+  (let
+    (
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (vault-collateral (get vault-collateral loan))
+      (liquidation-ratio (get liquidation-ratio loan))
+      (liquidation-level (* (/ vault-collateral liquidation-ratio) u100))
+    )
+    (ok liquidation-level)
+  )
+)
 ;; ---------------------------------------------------------
 ;; Data maps
 ;; ---------------------------------------------------------
@@ -213,6 +248,17 @@
   )
 )
 
+(define-public (print-loan (loan-id uint))
+  (let
+    (
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+    )
+    ;; print it out
+    (print { loan: loan })
+    (ok loan)
+  )
+)
+
 ;; ---------------------------------------------------------
 ;; Private and Public Functions - Rafa's Experiment
 ;; record-borrowed-amount, repay, get-total-interests and get-total-pinicipal are private functions
@@ -241,10 +287,10 @@
 (define-private (func-deduce-left (borrowed-amount uint))
   (let
     (
-      (left-over (var-get left-helper))
+      (left-over (var-get left-helper)) ;; this is repaying amount - totat-interests
     )
     (begin
-      (if (> left-over borrowed-amount)
+      (if (>= left-over borrowed-amount) ;; put b-height to u0 when they repay the entire present-value
         (begin
           (var-set left-helper (- left-over borrowed-amount))
           {amount: u0, b-height: u0} ;; this is what we need to prune from the list
@@ -271,9 +317,10 @@
 (define-private (func-deduce-interests (borrowed-data {amount: uint, b-height: uint}))
   (let
     (
-      (left-over (var-get left-helper))
+      (left-over (var-get left-helper)) ;; this is the remaining repaying amount
       (borrowed-amount (get amount borrowed-data))
-      (amount-interest (get-interests borrowed-data)) ;; 10^2 precision
+      (amount-interest (get-interests borrowed-data))
+      (current-interest-helper (var-get interest-helper))
     )
       (if (> left-over amount-interest)
         (begin
@@ -282,7 +329,7 @@
         )
         (begin
           (var-set left-helper u0)
-          (var-set interest-helper (- amount-interest left-over))
+          (var-set interest-helper (+ current-interest-helper (- amount-interest left-over))) ;; here there is a problem
           {amount: borrowed-amount, b-height: block-height}
         )
       )
@@ -307,32 +354,40 @@
       (total-borrowed (fold + list-of-borrowed-amounts u0))
       ;; we need to calculate the present value of the borrowed amount
       (present-value (+ total-borrowed total-interests))
-      (left-after-paying-interest (- repaying-amount total-interests))
     )
       (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
-      (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
-      (asserts! (> present-value repaying-amount) err-balance-negative)
+      (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa ;; we can only repay when it's in status-funded
+      (asserts! (>= present-value repaying-amount) err-balance-negative)
       ;; now we compare the repaying amount to the cumulative interests
       ;; if repaying amount > cumulative interests, we set the b-height to current block height and simply need to reduce the amount
       ;; if repaying amount < cumulative interests, we we set the b-height to current block height and we add the remaining interest due to the interest-adjust
-      (if (> repaying-amount total-interests)
+      ;; first we repay the interest-adjust if it's not u0
+      ;; if repaying-amount < current-interest-adjust then merge interest-adjust to u0 in loan and exit
+      (if (< repaying-amount current-interest-adjust)
+          (map-set loans loan-id (merge loan { interest-adjust: (- current-interest-adjust repaying-amount) }))
           (begin
-          (var-set left-helper left-after-paying-interest)
-          (map-set loans loan-id (merge loan { borrowed-amounts: (filter func-filter-non-zero (map func-deduce-left current-borrowed-amounts-only)) }))
-          )
-          (begin
-          (var-set left-helper (* left-after-paying-interest u100)) ;; 10^2 precision like interests
-           ;; this is where we have to wipe out the b-heights up to a certain borrowed amount tuple
-            (map-set loans loan-id (merge loan { borrowed-amounts: (map func-deduce-interests current-borrowed-amounts) }))
-            ;; we need to add interest-helper to whatever was already there in interest-adjust
-            (map-set loans loan-id (merge loan { interest-adjust: (+ current-interest-adjust  (/ (var-get interest-helper) u100)) }))
-            (var-set interest-helper u0) ;; set it back to 0
+            (if (> (- repaying-amount current-interest-adjust) cumulative-interests)
+                (begin
+                (var-set left-helper (- (- repaying-amount current-interest-adjust) cumulative-interests))
+                (map-set loans loan-id (merge loan { borrowed-amounts: (filter func-filter-non-zero (map func-deduce-left current-borrowed-amounts-only)), interest-adjust: u0 }))
+                )
+                (begin
+                (var-set left-helper (- repaying-amount current-interest-adjust)) ;; error here corrected Rafa
+                (var-set interest-helper u0)
+                ;; this is where we have to wipe out the b-heights up to a certain borrowed amount tuple
+                  (map-set loans loan-id (merge loan { borrowed-amounts: (map func-deduce-interests current-borrowed-amounts), interest-adjust: (var-get interest-helper)  }))
+                  ;; (print { borrowed-amounts: (get borrowed-amounts (unwrap! (get-loan loan-id) err-unknown-loan-contract)) })
+                  (print {loan: (unwrap! (map-get? loans loan-id) err-unknown-loan-contract)})  ;; *1 therefore new current-interest-adjust is u0 and no need to add it here
+                  (var-set interest-helper u0) ;; set it back to 0
+                )
+            )
           )
       )
-      (ok true)
+      ;; Don't forget to repay the contract the repaying-amount ;; testing we DO need this Rafa!
+      (try! (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer repaying-amount (get owner loan) sample-protocol-contract none))
+      (ok repaying-amount)
   )
 )
-
 ;; A model to calculate the time passing by and deducing the interest amount
 ;; Repay Interest First, then repay borrowed-amounts
 ;; Cumulative Interest Calculation (not Sequential)
@@ -345,24 +400,42 @@
     (borrowed-amount (get amount borrowed-data))
     (borrowed-at (get b-height borrowed-data))
     (current-block-height block-height)
+
+    (time-difference-in-seconds (* (- current-block-height borrowed-at) seconds-per-block))
+    (time-difference-in-years  (/ (* time-difference-in-seconds u10000) seconds-per-year)) ;; 10^4 scale factor 1
+    ;; (compound-factor (pow (+ u1 (/ (/ (var-get interest) u10000) u1)) (* u1 time-difference-in-years)))
+
+    (interest-factor (* time-difference-in-years (var-get interest))) ;; 10^8 scale factor because interest is 10^4 scale
+    (interests (/ (* borrowed-amount interest-factor) u100000000)) ;; interest-only has a 10^2 scale factor
+  )
+    (print { borrowed-amount: borrowed-amount, borrowed-at: borrowed-at, current-block-height: current-block-height, time-difference-in-seconds: time-difference-in-seconds, time-difference-in-years: time-difference-in-years, interest-factor: interest-factor, interests: interests })
+    interests ;; scale factor of 10^8 to have it in the unit of borrowed amounts
+  )
+)
+
+(define-public (get-interests-in-public (borrowed-data (tuple (amount uint) (b-height uint))))
+  (let (
+    (borrowed-amount (get amount borrowed-data))
+    (borrowed-at (get b-height borrowed-data))
+    (current-block-height block-height)
     ;; (current-block-height u500) ;; for testing purposes
     (time-difference-in-seconds (* (- current-block-height borrowed-at) seconds-per-block))
     (time-difference-in-years  (/ (* time-difference-in-seconds u10000) seconds-per-year)) ;; 10^4 scale factor 1
     ;; (compound-factor (pow (+ u1 (/ (/ (var-get interest) u10000) u1)) (* u1 time-difference-in-years)))
 
-    (interest-times-time-in-a-year (* time-difference-in-years (var-get interest))) ;; interest has a 10^4 scale factor 2 ;; -> 10^8 scale factor
-    (interests (/ (* borrowed-amount interest-times-time-in-a-year) u1000000)) ;; interest-only has a 10^2 scale factor
+    (interest-factor (* time-difference-in-years (var-get interest))) ;; 10^8 scale factor because interest is 10^4 scale
+    (interests (/ (* borrowed-amount interest-factor) u100000000)) ;; interest is in base unit
+    ;; if borrowed amount in sats then we divide by 10^8 like above
+
+
   )
-    interests ;; scale factor of 10^8 to have it in the unit of borrowed amounts
+    (print { borrowed-amount: borrowed-amount, borrowed-at: borrowed-at, current-block-height: current-block-height, time-difference-in-seconds: time-difference-in-seconds, time-difference-in-years: time-difference-in-years, interest-factor: interest-factor, interests: interests })
+    (ok interests) ;; scale factor of 10^8 to have it in the unit of borrowed amounts
   )
 )
 
-;; (define-public (RafaCalcul (a uint) (b uint))
-;;   (ok (/ (* a u10000) b)) ;; this gives cents: 27 is in fact 0.0027% - for testing Clarity precision
-;; )
-
 ;; Function to calculate total interest owed on all borrowing amounts
-(define-read-only (get-total-interests (loan-id uint))
+(define-public (get-total-interests (loan-id uint))
   (let
     (
       (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
@@ -372,23 +445,10 @@
       (cumulative-interests (fold + list-of-interests u0))
       (total-interests (+ cumulative-interests (get interest-adjust loan)))
     )
+    (print { list-of-interests: list-of-interests, cumulative-interests: cumulative-interests, total-interests: total-interests })
     (ok total-interests)
   )
 )
-
-;; (define-read-only (rafaFolding) ;; for testing purposes
-;;   (let
-;;     (
-;;       (list1 (list {amount: u10, b-height: u1} {amount: u30, b-height: u2}))
-;;       (list-of-amounts (map get-amount list1))
-;;       (total-principal (fold + list-of-amounts u0))
-;;     )
-;;     ;; (ok total-principal)
-;;     ;; print { list-of-amounts: list-of-amounts }
-;;     (print { list-of-amounts: list-of-amounts })
-;;     (ok total-principal)
-;;     )
-;; )
 
 
 ;; Function that takes (tuple (amount uint) (b-height uint)) in and spits out the amount
@@ -409,7 +469,7 @@
   )
 )
 
-(define-public (present-value-loan (loan-id uint))
+(define-read-only (get-present-value-loan (loan-id uint))
   (let
     (
     (total-principal (unwrap! (get-total-principal loan-id) err-cant-unwrap))
@@ -429,6 +489,7 @@
 ;; - Calls the dlc-manager-contract's create-dlc function to initiate the creation
 ;; The DLC Contract will call back into the provided 'target' contract with the resulting UUID (and the provided loan-id).
 ;; See scripts/setup-loan.ts for an example of calling it.
+;; Let's have btc-deposit in satoshis when we call setup-loan
 (define-public (setup-loan (btc-deposit uint) (attestor-ids (buff 32)))
     (let
       (
@@ -438,28 +499,31 @@
         (target sample-protocol-contract)
         (current-loan-ids (get-creator-loan-ids tx-sender))
           ;; Call to create-dlc returns the list of attestors, as well as the uuid of the dlc
-        (create-return (unwrap-panic (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 create-dlc target (var-get protocol-wallet-address) attestor-ids)) err-contract-call-failed)))
-        (attestors (get attestors create-return))
-        (uuid (get uuid create-return))
+        (create-return (unwrap-panic (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 create-dlc target (var-get protocol-wallet-address) attestor-ids)) err-contract-call-failed))) ;; testing we don't need this Rafa
+        (attestors (get attestors create-return)) ;; testing we don't need this Rafa
+        (uuid (get uuid create-return)) ;; testing we don't need this Rafa
       )
       (var-set last-loan-id loan-id)
       (begin
           (map-set loans loan-id {
-            dlc_uuid: (some uuid),
+            dlc_uuid: (some uuid), ;; testing we don't need this Rafa
+            ;; dlc_uuid: none, ;; testing we don't need this Rafa
             status: status-ready,
             vault-collateral: btc-deposit,
             liquidation-ratio: liquidation-ratio,
             liquidation-fee: liquidation-fee,
             owner: tx-sender,
-            attestors: attestors,
+            attestors: attestors, ;; testing we don't need this Rafa
+            ;; attestors: (list ), ;; testing we don't need this Rafa
             btc-tx-id: none,
             borrowed-amounts: list-borrowed-empty,
             interest-adjust: u0
           })
-          (try! (set-status loan-id status-ready))
+          (try! (set-status loan-id status-ready)) ;; this is useless
           (map-set creator-loan-ids tx-sender (unwrap-panic (as-max-len? (append current-loan-ids loan-id) u50)))
-          (map-set uuid-loan-id uuid loan-id)
-          (ok uuid)
+          (map-set uuid-loan-id uuid loan-id) ;; testing we don't need this Rafa
+          (ok uuid) ;; testing we don't need this Rafa
+          ;; (ok loan-id)
       )
     )
 )
@@ -467,11 +531,13 @@
 
 ;; @desc Externally set a given DLCs status to funded.
 ;; Called by the dlc-manager contract after the necessary BTC events have happened.
-(define-public (set-status-funded (uuid (buff 32)))
+(define-public (set-status-funded (uuid (buff 32))) ;; Anyone can call set-status and  set-status-funded - probably not a good thing Rafa
   (let (
     (loan-id (unwrap! (get-loan-id-by-uuid uuid ) err-cant-get-loan-id-by-uuid ))
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     )
+    ;; assert that only the dlc-manager-contract can call this function
+    ;; (asserts! (is-eq dlc-manager-contract tx-sender) err-unauthorised) ;; add this back after testing Rafa
     (asserts! (not (is-eq (get status loan) status-funded)) err-dlc-already-funded)
     (begin
       (try! (set-status loan-id status-funded))
@@ -485,18 +551,26 @@
   (let
     (
         (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract)) ;; get the loan
-        (present-value (unwrap! (present-value-loan loan-id) err-cant-unwrap))
+        (present-value (unwrap! (get-present-value-loan loan-id) err-cant-unwrap))
+        (present-borrow (+ present-value amount))
         ;; get liquidation ratio from loan
         (liquidation-ratio (get liquidation-ratio loan))
         ;; get vault-collateral from loan
         (vault-collateral (get vault-collateral loan))
+        ;; get liquidation level
+        (liquidation-level (* (/ vault-collateral liquidation-ratio) u100))
     )
         (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
-        (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
+        (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa ;; we can only borrow when it's in status-funded
         ;; they cannot borrow if vault-collateral =< Liquidation ratio * present-value
-        (asserts! (> vault-collateral (* liquidation-ratio present-value)) err-cannot-borrow-liquidation-ratio)
+        (print { vault-collateral: vault-collateral, liquidation-ratio: liquidation-ratio, present-value: present-value, present-borrow: present-borrow, indicator: (/ (* liquidation-ratio present-borrow) u100) })
+        (asserts! (< present-borrow liquidation-level) err-cannot-borrow-liquidation-ratio) ;; this is right now, you can't borrow if vault-collateral >= liquidation-ratio * present-borrow
+        ;; let's print it here: vault collateral and present-borrow and present borrow times liquidation-ratio/100
+        (print { vault-collateral: vault-collateral, present-borrow: present-borrow, indicator: (/ (* liquidation-ratio present-borrow) u100) })
+
         (unwrap! (record-borrowed-amount loan-id amount) err-cant-record-ba);; record the borrowed amount and block height
-        (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount sample-protocol-contract (get owner loan) none)) err-transfer-sbtc) ;; send the txsender their borrowed sbtc
+        (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount sample-protocol-contract (get owner loan) none))) err-transfer-sbtc) ;; send the txsender their borrowed sbtc
+        ;; (ok {lration: liquidation-ratio, p-value: present-value, v-collateral: vault-collateral, liquidation-value: (* liquidation-ratio present-value)})
         ;; (ok true)
     )
 )
@@ -507,13 +581,16 @@
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     ;; get borrowed-amounts
     (borrowed-amounts (get borrowed-amounts loan))
-    (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
+    (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap)) ;; unnecssary for testing Rafa
     )
     (begin
+      ;; assert that only tx-sender can close the loan
+      (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
       ;; here we need to asserts that borrowed-amounts is equal to list-borrowed-empty
       (asserts! (is-eq borrowed-amounts list-borrowed-empty) err-not-repaid)
       (try! (set-status loan-id status-pre-repaid))
-      (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid u0)) err-contract-call-failed) ;; u0 ~ user gets their Bitcoins back (no liquidation event)
+      (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid u0)) err-contract-call-failed) ;; u0 ~ user gets their Bitcoins back (no liquidation event) ;; unnecessary for testing Rafa
+      ;; (ok true) ;; unnecessary for testing Rafa
     )
   )
 )
@@ -532,6 +609,8 @@
             ) err-cant-unwrap)
     ))
     (begin
+      ;; assert that only the dlc-manager-contract can call this function
+      ;; (asserts! (is-eq dlc-manager-contract tx-sender) err-unauthorised) ;; add this back after testing Rafa
       (map-set loans loan-id (merge loan { btc-tx-id: (some btc-tx-id) })) ;; there is a new btc transaction here recorded (the initial is not preserved? Rafa question here)
       (try! (set-status loan-id newstatus)) ;; okay
     )
@@ -551,26 +630,48 @@
         ;; get liquidation ratio from loan
         (liquidation-ratio (get liquidation-ratio loan))
         ;; get the liquidation-fee
-        (liquidation-fee (get liquidation-fee loan))
+        (liquidation-fee (get liquidation-fee loan)) ;; this is a percentage of the amount at stake of liquidation
 
-        (present-value (unwrap! (present-value-loan loan-id) err-present-value-loan))
-        ;; the difference between vault-collateral and present-value-loan is at stake
-        ;; the protocol will sell the difference to liquidators
-        (liquidation-amount (unwrap! (ok (* (- vault-collateral present-value) liquidation-ratio)) err-cant-unwrap)) ;; if nobody liquidates this becomes negative and then it becomes bad debt!
+        (present-value (unwrap! (get-present-value-loan loan-id) err-present-value-loan))
+
         (liquidator tx-sender)
       )
-      ;; assert that vault-collateral =< (present-value-loan * liquidation-ratio)
-      (asserts! (<= vault-collateral (/ (* present-value liquidation-ratio) u100)) err-doesnt-need-liquidation) ;; here we have to check the units, vault-collateral is in sats, present-value-loan is in ???? and liquidation-ratio is in 10^2 precision
-      (print { liquidator: tx-sender })
-      ;; assert that liquidation-amount is positive
-      (asserts! (> vault-collateral present-value) err-doesnt-need-liquidation) ;; the borrower isn't incentivize to repay if the liquidation-amount is negative
-      (asserts! (>= vault-collateral present-value) err-protocol-under-water)
-      ;; pay the liquidator the liquidation-amount before the protocol receives the collateral-vault from bitcoin to sBTC?
-      (try! (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer liquidation-amount sample-protocol-contract liquidator none))) ;; err-transfer-sbtc) ;; liquidation-fee should be renamed to liquidation-fee-percentage
+        ;; we need some assertions here for when the loan is already liquidated or in status that should error out
 
-      ;; ;; here we're doing it before getting the collateral-vault from bitcoin to sBTC
-      (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
-      (ok true)
+        ;; the difference between vault-collateral and present-value-loan is at stake
+        ;; the protocol will sell the difference to liquidators
+      (if (>= vault-collateral present-value)
+        (begin ;; the loan is not underwater
+            ;; assert that liquidation-amount is positive
+            (asserts! (<= vault-collateral (/ (* present-value liquidation-ratio) u100)) err-doesnt-need-liquidation) ;; LR = u105% = Collat / PV
+            ;; pay the liquidator the liquidation-amount before the protocol receives the collateral-vault from bitcoin to sBTC?
+            (print { liquidator: tx-sender })
+            ;; if the protocol's 25% margin doesn't make up for the operations, the protocol loses money
+            ;; we need to assert that (* (- vault-collateral present-value) (- 1 liquidation-fee)) is > a constant here Rafa
+            ;; and if it's not then liquidator gets 0 from liquidation and the protocol gets 100%
+            (asserts! (<= liquidation-fee u100) err-liquidation-fee-too-high)
+              (if (> (/ (* (- vault-collateral present-value) (- u100 liquidation-fee)) u100) (var-get minimum-liquidation-amount))
+                  (begin
+                    (try! (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer (/ (* (- vault-collateral present-value) liquidation-fee) u100) sample-protocol-contract liquidator none)));; liquidation-fee should be renamed to liquidation-fee-percentage
+                    (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
+                    ;; This is a healthy liquidation, the user owes nothing, and his loan is closed
+                    ;; do we want to wipe out the loan here? Rafa
+                    (ok true)
+                  )
+                  (begin
+                  (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan) ;; liquidator gets 0 and protocol gets 100%
+                  ;; This is an unhealthy liquidation, the protocol has to disburse some fees to liquidate the loan
+                  ;; do we want to flag the user here or wipe out the user's loan? Rafa
+                  (ok false)
+                  )
+              )
+        )
+        (begin ;; the loan is underwater
+            (emergency-liquidate loan-id) ;; the borrower isn't incentivize to repay if the loan is under water
+            ;; we could use liquidate-loan directly here...
+            ;; no one will lend the protocol if this branch happens, hence having a liquidation-ratio conservative and [a liquidation-fee, minimum-liquidation-amount] juicy enough
+        )
+      )
   )
 )
 ;; 1 BTC ~ 10^8 ~ 100 000 000
@@ -582,11 +683,12 @@
 (define-private (liquidate-loan (loan-id uint))
   (let (
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
+    (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap)) ;; reestablish after testing Rafa
     )
     (begin
       (try! (set-status loan-id status-pre-liquidated))
-      (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid u10000))) err-contract-call-failed)
+      (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid u10000))) err-contract-call-failed) ;; reestablish after testing Rafa
+      ;; (ok true) ;; delete after testing Rafa
     )
   )
 )
@@ -596,7 +698,7 @@
       (
         (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
         (vault-collateral (get vault-collateral loan))
-        (present-value (unwrap! (present-value-loan loan-id) err-present-value-loan))
+        (present-value (unwrap! (get-present-value-loan loan-id) err-present-value-loan))
       )
       ;; if present value loan is greater than vault-collateral, then emergency liquidation is possible
       (asserts! (<= vault-collateral present-value) err-doesnt-need-liquidation)
@@ -606,4 +708,4 @@
       (ok true)
   )
 )
-
+;; do not allow loan-setup if user has a loan under water

@@ -655,11 +655,14 @@
                   (begin
                     (try! (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer (/ (* (- vault-collateral present-value) liquidation-fee) u100) sample-protocol-contract liquidator none)));; liquidation-fee should be renamed to liquidation-fee-percentage
                     (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
-
+                    ;; This is a healthy liquidation, the user owes nothing, and his loan is closed
+                    ;; do we want to wipe out the loan here? Rafa
                     (ok true)
                   )
                   (begin
                   (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan) ;; liquidator gets 0 and protocol gets 100%
+                  ;; This is an unhealthy liquidation, the protocol has to disburse some fees to liquidate the loan
+                  ;; do we want to flag the user here or wipe out the user's loan? Rafa
                   (ok false)
                   )
               )
@@ -667,6 +670,7 @@
         (begin ;; the loan is underwater
             (emergency-liquidate loan-id) ;; the borrower isn't incentivize to repay if the loan is under water
             ;; we could use liquidate-loan directly here...
+            ;; no one will lend the protocol if this branch happens, hence having a liquidation-ratio conservative and [a liquidation-fee, minimum-liquidation-amount] juicy enough
         )
       )
   )
