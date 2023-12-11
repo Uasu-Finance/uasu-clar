@@ -641,6 +641,7 @@
               )
         )
         (begin ;; the loan is underwater
+            (asserts! (>= vault-collateral (/ (* present-value liquidation-ratio) u100)) err-doesnt-need-liquidation)
             (emergency-liquidate loan-id) ;; the borrower isn't incentivize to repay if the loan is under water
             ;; we could use liquidate-loan directly here...
         )
