@@ -24,6 +24,7 @@
 (define-constant err-cant-record-ba (err u1018))
 (define-constant err-present-value-loan (err u1019))
 (define-constant err-protocol-under-water (err u1020))
+(define-constant err-liquidation-fee-too-high (err u1021))
 
 ;; Status Enum
 (define-constant status-ready "ready")
@@ -63,7 +64,7 @@
   )
 )
 
-(define-data-var liquidation_ratio uint u10500);; this is too wide because sBTC ~ BTC + premium and premium gets arbitraged away; borrow up to ~95.23 of 100 in collateral
+(define-data-var liquidation_ratio uint u105);; sBTC ~ BTC + premium and premium gets arbitraged away; borrow up to ~95.23 of 100 in collateral
 
 (define-public (set-liquidation-ratio (ratio uint))
   (begin
@@ -93,6 +94,7 @@
 (define-public (set-liquidation-fee (fee uint))
   (begin
     (asserts! (is-eq contract-owner tx-sender) err-unauthorised)
+    (asserts! (<= fee u100) err-liquidation-fee-too-high)
     (var-set liquidation_fee fee)
     (ok fee)
   )
@@ -102,13 +104,22 @@
       (let
       (
         (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-      (current-borrowed-amounts (get borrowed-amounts loan))
+        (current-borrowed-amounts (get borrowed-amounts loan))
       )
       (ok current-borrowed-amounts)
       )
 )
 
+(define-data-var minimum-liquidation-amount uint u100) ;; on mainnet change this to u100,000 sats
 
+(define-public (set-minimum-liquidation-amount (amount uint))
+  (begin
+    (asserts! (is-eq contract-owner tx-sender) err-unauthorised)
+    ;; (asserts! (> amount u100000) err-minimum-liquidation-amount-too-low) ;; leaving this open but owner of contract can attack here?
+    (var-set minimum-liquidation-amount amount)
+    (ok amount)
+  )
+)
 ;; ---------------------------------------------------------
 ;; Data maps
 ;; ---------------------------------------------------------
@@ -507,7 +518,7 @@
 
 ;; @desc Externally set a given DLCs status to funded.
 ;; Called by the dlc-manager contract after the necessary BTC events have happened.
-(define-public (set-status-funded (uuid (buff 32)))
+(define-public (set-status-funded (uuid (buff 32))) ;; Anyone can call set-status and  set-status-funded - probably not a good thing Rafa
   (let (
     (loan-id (unwrap! (get-loan-id-by-uuid uuid ) err-cant-get-loan-id-by-uuid ))
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
@@ -536,7 +547,10 @@
         ;; (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa
         ;; they cannot borrow if vault-collateral =< Liquidation ratio * present-value
         (print { vault-collateral: (* u10000 vault-collateral), liquidation-ratio: liquidation-ratio, present-value: present-value, present-borrow: present-borrow, indicator: (* liquidation-ratio present-borrow) })
-        (asserts! (> (* u10000 vault-collateral) (* liquidation-ratio present-borrow)) err-cannot-borrow-liquidation-ratio)
+        (asserts! (> vault-collateral (/ (* liquidation-ratio present-borrow) u100)) err-cannot-borrow-liquidation-ratio) ;; this is right now, you can't borrow if vault-collateral >= liquidation-ratio * present-borrow
+        ;; let's print it here: vault collateral and present-borrow and present borrow times liquidation-ratio/100
+        (print { vault-collateral: vault-collateral, present-borrow: present-borrow, indicator: (/ (* liquidation-ratio present-borrow) u100) })
+
         (unwrap! (record-borrowed-amount loan-id amount) err-cant-record-ba);; record the borrowed amount and block height
         (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount sample-protocol-contract (get owner loan) none))) err-transfer-sbtc) ;; send the txsender their borrowed sbtc
         ;; (ok {lration: liquidation-ratio, p-value: present-value, v-collateral: vault-collateral, liquidation-value: (* liquidation-ratio present-value)})
@@ -591,31 +605,46 @@
       (
         (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
         ;; get vault-collateral from loan
-        ;; (vault-collateral (get vault-collateral loan)) ;; testing we don't need this Rafa
-        (vault-collateral u100000000) ;; testing we don't need this Rafa
+        (vault-collateral (get vault-collateral loan))
         ;; get liquidation ratio from loan
         (liquidation-ratio (get liquidation-ratio loan))
         ;; get the liquidation-fee
-        (liquidation-fee (get liquidation-fee loan))
+        (liquidation-fee (get liquidation-fee loan)) ;; this is a percentage of the amount at stake of liquidation
 
         (present-value (unwrap! (get-present-value-loan loan-id) err-present-value-loan))
-        ;; the difference between vault-collateral and present-value-loan is at stake
-        ;; the protocol will sell the difference to liquidators
-        (liquidation-amount (unwrap! (ok (* (- vault-collateral present-value) liquidation-ratio)) err-cant-unwrap)) ;; if nobody liquidates this becomes negative and then it becomes bad debt!
+
         (liquidator tx-sender)
       )
-      ;; assert that vault-collateral =< (present-value-loan * liquidation-ratio)
-      (asserts! (<= vault-collateral (/ (* present-value liquidation-ratio) u100)) err-doesnt-need-liquidation) ;; here we have to check the units, vault-collateral is in sats, present-value-loan is in ???? and liquidation-ratio is in 10^2 precision
-      (print { liquidator: tx-sender })
-      ;; assert that liquidation-amount is positive
-      (asserts! (> vault-collateral present-value) err-doesnt-need-liquidation) ;; the borrower isn't incentivize to repay if the liquidation-amount is negative
-      (asserts! (>= vault-collateral present-value) err-protocol-under-water)
-      ;; pay the liquidator the liquidation-amount before the protocol receives the collateral-vault from bitcoin to sBTC?
-      (try! (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer liquidation-amount sample-protocol-contract liquidator none))) ;; err-transfer-sbtc) ;; liquidation-fee should be renamed to liquidation-fee-percentage
-
-      ;; ;; here we're doing it before getting the collateral-vault from bitcoin to sBTC
-      ;; (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan) ;; testing we don't need this Rafa
-      (ok u10000)
+        ;; the difference between vault-collateral and present-value-loan is at stake
+        ;; the protocol will sell the difference to liquidators
+      (if (>= vault-collateral present-value)
+        (begin ;; the loan is not underwater
+            ;; assert that liquidation-amount is positive
+            (asserts! (>= vault-collateral (/ (* present-value liquidation-ratio) u100)) err-doesnt-need-liquidation) ;; LR = u105% = Collat / PV
+            (asserts! (>= vault-collateral present-value) err-protocol-under-water) ;; this is useless
+            ;; pay the liquidator the liquidation-amount before the protocol receives the collateral-vault from bitcoin to sBTC?
+            (print { liquidator: tx-sender })
+            ;; if the protocol's 25% margin doesn't make up for the operations, the protocol loses money
+            ;; we need to assert that (* (- vault-collateral present-value) (- 1 liquidation-fee)) is > a constant here Rafa
+            ;; and if it's not then liquidator gets 0 from liquidation and the protocol gets 100%
+            (asserts! (<= liquidation-fee u100) err-liquidation-fee-too-high)
+              (if (> (/ (* (- vault-collateral present-value) (- u100 liquidation-fee)) u100) (var-get minimum-liquidation-amount))
+                  (begin
+                    (try! (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer (/ (* (- vault-collateral present-value) liquidation-fee) u100) sample-protocol-contract liquidator none)));; liquidation-fee should be renamed to liquidation-fee-percentage
+                    (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
+                    (ok true)
+                  )
+                  (begin
+                  (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan) ;; liquidator gets 0 and protocol gets 100%
+                  (ok false)
+                  )
+              )
+        )
+        (begin ;; the loan is underwater
+            (emergency-liquidate loan-id) ;; the borrower isn't incentivize to repay if the loan is under water
+            ;; we could use liquidate-loan directly here...
+        )
+      )
   )
 )
 ;; 1 BTC ~ 10^8 ~ 100 000 000
@@ -627,11 +656,12 @@
 (define-private (liquidate-loan (loan-id uint))
   (let (
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
+    ;; (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap)) ;; reestablish after testing Rafa
     )
     (begin
       (try! (set-status loan-id status-pre-liquidated))
-      (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid u10000))) err-contract-call-failed)
+      ;; (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid u10000))) err-contract-call-failed) ;; reestablish after testing Rafa
+      (ok true) ;; delete after testing Rafa
     )
   )
 )
@@ -651,4 +681,4 @@
       (ok true)
   )
 )
-
+;; do not allow loan-setup if user has a loan under water
