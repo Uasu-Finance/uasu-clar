@@ -27,12 +27,12 @@
 (define-constant err-liquidation-fee-too-high (err u1021))
 
 ;; Status Enum
-(define-constant status-ready "ready")
-(define-constant status-funded "funded")
-(define-constant status-pre-repaid "pre-repaid")
-(define-constant status-repaid "repaid")
-(define-constant status-pre-liquidated "pre-liquidated")
-(define-constant status-liquidated "liquidated")
+(define-constant status-ready "ready")                    ;; setup-loan sets status-ready (ok)
+(define-constant status-funded "funded")                  ;; set-status-funded - anyone can call it (NOT okay)
+(define-constant status-pre-repaid "pre-repaid")          ;; close-loan sets status-pre-repaid - only loan owner can call it (ok)
+(define-constant status-repaid "repaid")                  ;; post-close-dlc-handler sets status-repaid ;; anyone can call it (corrected!)
+(define-constant status-pre-liquidated "pre-liquidated")  ;; liquidate-loan sets status-pre-liquidated
+(define-constant status-liquidated "liquidated")          ;; post-close-dlc-handler sets status-liquidated ;; same (corrected!)
 
 (define-constant ten-to-power-2 u100)
 (define-constant ten-to-power-4 u10000)
@@ -55,6 +55,7 @@
 (define-data-var interest uint u150) ;; 1.50% interest
 
 (define-data-var protocol-wallet-address principal 'ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP)
+(define-data-var dlc-manager-contract principal 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1) ;; add an assertions to post-close-dlc-handler to check that the dlc-manager-contract is the one calling it
 
 (define-public (set-protocol-wallet-address (address principal))
   (begin
@@ -343,7 +344,7 @@
       ;; (left-after-paying-interest (- repaying-amount total-interests)) ;; this cannot be here Rafa testing else underflow is possible
     )
       (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
-      ;; (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa
+      ;; (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa ;; we can only repay when it's in status-funded
       (asserts! (>= present-value repaying-amount) err-balance-negative)
       ;; now we compare the repaying amount to the cumulative interests
       ;; if repaying amount > cumulative interests, we set the b-height to current block height and simply need to reduce the amount
@@ -506,7 +507,7 @@
             borrowed-amounts: list-borrowed-empty,
             interest-adjust: u0
           })
-          (try! (set-status loan-id status-ready))
+          (try! (set-status loan-id status-ready)) ;; this is useless
           (map-set creator-loan-ids tx-sender (unwrap-panic (as-max-len? (append current-loan-ids loan-id) u50)))
           ;; (map-set uuid-loan-id uuid loan-id) ;; testing we don't need this Rafa
           ;; (ok uuid) ;; testing we don't need this Rafa
@@ -523,6 +524,8 @@
     (loan-id (unwrap! (get-loan-id-by-uuid uuid ) err-cant-get-loan-id-by-uuid ))
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     )
+    ;; assert that only the dlc-manager-contract can call this function
+    ;; (asserts! (is-eq dlc-manager-contract tx-sender) err-unauthorised) ;; add this back after testing Rafa
     (asserts! (not (is-eq (get status loan) status-funded)) err-dlc-already-funded)
     (begin
       (try! (set-status loan-id status-funded))
@@ -544,7 +547,7 @@
         (vault-collateral (get vault-collateral loan)) ;; testing we don't need this Rafa
     )
         (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
-        ;; (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa
+        ;; (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded) ;; testing we don't need this Rafa ;; we can only borrow when it's in status-funded
         ;; they cannot borrow if vault-collateral =< Liquidation ratio * present-value
         (print { vault-collateral: (* u10000 vault-collateral), liquidation-ratio: liquidation-ratio, present-value: present-value, present-borrow: present-borrow, indicator: (* liquidation-ratio present-borrow) })
         (asserts! (> vault-collateral (/ (* liquidation-ratio present-borrow) u100)) err-cannot-borrow-liquidation-ratio) ;; this is right now, you can't borrow if vault-collateral >= liquidation-ratio * present-borrow
@@ -567,6 +570,8 @@
     ;; (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap)) ;; unnecssary for testing Rafa
     )
     (begin
+      ;; assert that only tx-sender can close the loan
+      (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
       ;; here we need to asserts that borrowed-amounts is equal to list-borrowed-empty
       (asserts! (is-eq borrowed-amounts list-borrowed-empty) err-not-repaid)
       (try! (set-status loan-id status-pre-repaid))
@@ -590,6 +595,8 @@
             ) err-cant-unwrap)
     ))
     (begin
+      ;; assert that only the dlc-manager-contract can call this function
+      ;; (asserts! (is-eq dlc-manager-contract tx-sender) err-unauthorised) ;; add this back after testing Rafa
       (map-set loans loan-id (merge loan { btc-tx-id: (some btc-tx-id) })) ;; there is a new btc transaction here recorded (the initial is not preserved? Rafa question here)
       (try! (set-status loan-id newstatus)) ;; okay
     )
@@ -615,6 +622,8 @@
 
         (liquidator tx-sender)
       )
+        ;; we need some assertions here for when the loan is already liquidated or in status that should error out
+
         ;; the difference between vault-collateral and present-value-loan is at stake
         ;; the protocol will sell the difference to liquidators
       (if (>= vault-collateral present-value)
@@ -678,8 +687,7 @@
       (asserts! (<= vault-collateral present-value) err-doesnt-need-liquidation)
       (print { liquidator: tx-sender, type: "emergency-liquidation" })
 
-      ;; (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan) ;; reestablish after testing Rafa
-      (ok true)
+      (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)
   )
 )
 ;; do not allow loan-setup if user has a loan under water
