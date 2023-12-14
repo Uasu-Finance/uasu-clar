@@ -1,4 +1,3 @@
-
 (use-trait cb-trait 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-link-callback-trait-v1.dlc-link-callback-trait-v1)
 (impl-trait 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-link-callback-trait-v1.dlc-link-callback-trait-v1)
 
@@ -288,15 +287,11 @@
 )
 
 ;; @desc Liquidates loan if necessary at given level
-(define-public (attempt-liquidate (btc-price uint) (uuid (buff 32)))
-  (let (
-    (loan-id (unwrap! (get-loan-id-by-uuid uuid) err-cant-get-loan-id-by-uuid ))
-    ;; (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    )
-    (asserts! (unwrap! (check-liquidation loan-id) err-cant-unwrap-check-liquidation) err-doesnt-need-liquidation)
+(define-public (attempt-liquidate (loan-id uint))
+    ( begin
+      (asserts! (unwrap! (check-liquidation loan-id) err-cant-unwrap-check-liquidation) err-doesnt-need-liquidation)
     (print { liquidator: tx-sender })
-    (ok (unwrap! (liquidate-loan loan-id btc-price) err-cant-unwrap-liquidate-loan))
-  )
+    (ok (unwrap! (liquidate-loan loan-id btc-price) err-cant-unwrap-liquidate-loan)))
 )
 
 (define-read-only (check-liquidation (loan-id uint)) 
@@ -310,11 +305,6 @@
   )
 )
 
-
-;; @desc Returns the resulting payout-ratio.
-;; This value is sent to the Oracle system for signing a point on the linear payout curve.
-;; using uints, this means return values between 0-10000 (0.00-100.00)
-;; 0.00 means the borrower gets back its deposit, 100.00 means the entire collateral gets taken by the protocol.
 (define-read-only (payout-ratio (loan-id uint))
   (let 
   (
@@ -330,18 +320,14 @@
         (ok (/ (* borrowed-plus-liquidation u1000) total-locked))
     )
   )
+
   )
 )
 
-;; @desc Calculating loan collateral value for a given btc-price * (10**8), with pennies precision.
-;; Since the deposit is in Sats, after multiplication we first shift by 2, then ushift by 16 to get pennies precision ($12345.67 = u1234567)
-(define-private (get-collateral-value (btc-deposit uint) (btc-price uint))
-  (unshift-value (shift-value (* btc-deposit btc-price) ten-to-power-2) ten-to-power-16)
-)
 
 ;; @desc An example function to initiate the liquidation of a DLC loan contract.
 ;; If liquidation is required, this function will initiate a simple close-dlc flow with the calculated payout-ratio
-(define-private (liquidate-loan (loan-id uint) (btc-price uint))
+(define-private (liquidate-loan (loan-id uint))
   (let (
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
