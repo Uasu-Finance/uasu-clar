@@ -291,7 +291,7 @@
     ( begin
       (asserts! (unwrap! (check-liquidation loan-id) err-cant-unwrap-check-liquidation) err-doesnt-need-liquidation)
     (print { liquidator: tx-sender })
-    (ok (unwrap! (liquidate-loan loan-id btc-price) err-cant-unwrap-liquidate-loan)))
+    (ok (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan)))
 )
 
 (define-read-only (check-liquidation (loan-id uint)) 
