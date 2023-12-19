@@ -16,6 +16,7 @@
 (define-constant err-stablecoin-repay-failed (err u1011))
 (define-constant err-balance-negative (err u1012))
 (define-constant err-not-repaid (err u1013))
+(define-constant err-borrow-limit-reached (err u1014))
 
 ;; Status Enum
 (define-constant status-ready "ready")
@@ -231,11 +232,15 @@
 ;; amount has 6 decimals e.g. $100 = u100000000
 (define-public (borrow (loan-id uint) (amount uint))
   (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (vault-loan-amount (get vault-loan loan))
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (vault-loan-amount (get vault-loan loan))
+      (collateral (/ (get vault-collateral loan) u100))
+      (fee (get liquidation-fee loan))
+      (next-amount (+ amount vault-loan-amount fee))
     )
     (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
+    (asserts! (<= next-amount collateral) err-borrow-limit-reached)
     (map-set loans loan-id (merge loan { vault-loan: (+ vault-loan-amount amount) }))
     (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount sample-protocol-contract (get owner loan) none)) err-stablecoin-issue-failed)
   )
