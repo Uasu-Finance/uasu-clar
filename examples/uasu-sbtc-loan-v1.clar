@@ -1,5 +1,5 @@
-(use-trait cb-trait 'ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3.dlc-link-callback-trait-v1.dlc-link-callback-trait-v1)
-(impl-trait 'ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3.dlc-link-callback-trait-v1.dlc-link-callback-trait-v1)
+(use-trait cb-trait 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-link-callback-trait-v1.dlc-link-callback-trait-v1)
+(impl-trait 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-link-callback-trait-v1.dlc-link-callback-trait-v1)
 
 ;; Error constants
 (define-constant err-cant-unwrap (err u1000))
@@ -46,6 +46,9 @@
     (var-set protocol-wallet-address address)
     (ok address)
   )
+)
+(define-read-only (get-protocol-wallet-address)
+  (ok (var-get protocol-wallet-address))
 )
 
 (define-data-var liquidation_ratio uint u14000)
@@ -184,7 +187,7 @@
         (target sample-protocol-contract)
         (current-loan-ids (get-creator-loan-ids tx-sender))
           ;; Call to create-dlc returns the list of attestors, as well as the uuid of the dlc
-        (create-return (unwrap-panic (unwrap! (ok (contract-call? 'ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3.dlc-manager-v1 create-dlc target (var-get protocol-wallet-address) attestor-ids)) err-contract-call-failed)))
+        (create-return (unwrap-panic (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 create-dlc target (var-get protocol-wallet-address) attestor-ids)) err-contract-call-failed)))
         (attestors (get attestors create-return))
         (uuid (get uuid create-return))
       )
@@ -234,7 +237,7 @@
     (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
     (map-set loans loan-id (merge loan { vault-loan: (+ vault-loan-amount amount) }))
-    (unwrap! (ok (contract-call? 'ST1R1061ZT6KPJXQ7PAXPFB6ZAZ6ZWW28G8HXK9G5.asset-3 transfer amount sample-protocol-contract (get owner loan) none)) err-stablecoin-issue-failed)
+    (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount sample-protocol-contract (get owner loan) none)) err-stablecoin-issue-failed)
   )
 )
 
@@ -247,7 +250,7 @@
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
     (asserts! (>= vault-loan-amount amount) err-balance-negative)
     (map-set loans loan-id (merge loan { vault-loan: (- vault-loan-amount amount) }))
-    (unwrap! (ok (contract-call? 'ST1R1061ZT6KPJXQ7PAXPFB6ZAZ6ZWW28G8HXK9G5.asset-3 transfer amount (get owner loan) sample-protocol-contract none)) err-stablecoin-repay-failed)
+    (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount (get owner loan) sample-protocol-contract none)) err-stablecoin-repay-failed)
   )
 )
 
@@ -260,7 +263,7 @@
     (begin
       (asserts! (is-eq (get vault-loan loan) u0) err-not-repaid)
       (try! (set-status loan-id status-pre-repaid))
-      (unwrap! (ok (contract-call? 'ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3.dlc-manager-v1 close-dlc uuid u0)) err-contract-call-failed)
+      (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid u0)) err-contract-call-failed)
     )
   )
 )
@@ -325,7 +328,7 @@
     )
     (begin
       (try! (set-status loan-id status-pre-liquidated))
-      (unwrap! (ok (as-contract (contract-call? 'ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3.dlc-manager-v1 close-dlc uuid payout-ratio))) err-contract-call-failed)
+      (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1 close-dlc uuid payout-ratio))) err-contract-call-failed)
     )
   )
 )

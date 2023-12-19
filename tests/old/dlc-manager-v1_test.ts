@@ -5,7 +5,7 @@ import { Clarinet, Tx, Chain, Account, types } from 'https://deno.land/x/clarine
 import { assertEquals, assertStringIncludes } from 'https://deno.land/std@0.196.0/testing/asserts.ts';
 
 // @ts-ignore-next-line
-import { assertMatch, shiftPriceValue } from './old/deps.ts';
+import { assertMatch, shiftPriceValue } from './deps.ts';
 
 // const BTChex = "BTC";
 const UUID = 'fakeuuid';
