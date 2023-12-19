@@ -16,6 +16,16 @@ path = 'contracts/dlc-link-callback-trait-v1.clar'
 clarity_version = 2
 epoch = 2.3
 
+[contracts.clarity-bitcoin-mini-deploy]
+path = 'contracts/clarity-bitcoin-mini-deploy.clar'
+clarity_version = 2
+epoch = 2.3
+
+[contracts.asset]
+path = 'contracts/asset.clar'
+clarity_version = 2
+epoch = 2.3
+
 [contracts.dlc-manager-v1]
 path = 'contracts/dlc-manager-v1.clar'
 clarity_version = 2
