@@ -91,29 +91,28 @@ describe("loan setup tests", () => {
     registerAttestors()
 
     //change protocol wallet address to wallet_1.
-    //const functionArgs1 = [Cl.principal(sender)]
-    //const p1:ParsedTransactionResult = simnet.callPublicFn(CONFIG.VITE_DLC_SAMPLE_CID.split('.')[1], "set-protocol-wallet-address", functionArgs1, deployer);
-    //expect(p1.result).toBeOk(Cl.principal(sender));
+    const functionArgs1 = [Cl.principal(sender)]
+    const p1:ParsedTransactionResult = simnet.callPublicFn(CONFIG.VITE_DLC_SAMPLE_CID.split('.')[1], "set-protocol-wallet-address", functionArgs1, deployer);
+    expect(p1.result).toBeOk(Cl.principal(sender));
 
     // setup loan
     const attestorIds = hex.decode('02')
     const functionArgs2 = [Cl.uint(10000), Cl.buffer(attestorIds)]
     const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_SAMPLE_CID.split('.')[1], "setup-loan", functionArgs2, deployer);
     const val:any = result
-    console.log(hex.encode(val.value.buffer))
     expect(result).toStrictEqual(Cl.ok(Cl.bufferFromHex(hex.encode(val.value.buffer))));
 
     // get the manager to callback to the loan contract to simulate funded.
-    console.log((val.value.buffer))
-    console.log(Cl.bufferFromHex('badd65ae692ebb71d71965e0e89112a73fe29ccf1793df63ddcaa03349ed3ed8'))
-    console.log(Cl.contractPrincipal(deployer, CONFIG.VITE_DLC_SAMPLE_CID.split('.')[1]))
+    //console.log((val.value.buffer))
+    //console.log(Cl.bufferFromHex('badd65ae692ebb71d71965e0e89112a73fe29ccf1793df63ddcaa03349ed3ed8'))
+    //console.log(Cl.contractPrincipal(deployer, CONFIG.VITE_DLC_SAMPLE_CID.split('.')[1]))
     const functionArgs3 = [
       Cl.buffer(val.value.buffer),
       Cl.contractPrincipal(deployer, CONFIG.VITE_DLC_SAMPLE_CID.split('.')[1])
     ]
-    const p:ParsedTransactionResult = simnet.callPublicFn(CONFIG.VITE_DLC_MANAGER_CID.split('.')[1], "set-status-funded", functionArgs3, protocol_wallet);
+    const p:ParsedTransactionResult = simnet.callPublicFn(CONFIG.VITE_DLC_MANAGER_CID.split('.')[1], "set-status-funded", functionArgs3, sender);
     console.log(p.result)
-    //expect(p.result).toBeOk(Cl.bool(true));
+    expect(p.result).toBeOk(Cl.bool(true));
   }); 
 
 });
