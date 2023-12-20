@@ -220,6 +220,7 @@
     (loan-id (unwrap! (get-loan-id-by-uuid uuid ) err-cant-get-loan-id-by-uuid ))
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     )
+    (asserts! (is-eq contract-caller 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1) err-unauthorised)
     (asserts! (not (is-eq (get status loan) status-funded)) err-dlc-already-funded)
     (begin
       (try! (set-status loan-id status-funded))
