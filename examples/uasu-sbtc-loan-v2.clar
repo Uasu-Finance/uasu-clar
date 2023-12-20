@@ -16,6 +16,7 @@
 (define-constant err-stablecoin-repay-failed (err u1011))
 (define-constant err-balance-negative (err u1012))
 (define-constant err-not-repaid (err u1013))
+(define-constant err-borrow-limit-reached (err u1014))
 
 ;; Status Enum
 (define-constant status-ready "ready")
@@ -36,7 +37,7 @@
 (define-constant contract-owner tx-sender)
 
 ;; Contract name bindings
-(define-constant sample-protocol-contract .uasu-sbtc-loan-v1)
+(define-constant sample-protocol-contract .uasu-sbtc-loan-v2)
 
 (define-data-var protocol-wallet-address principal 'ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP)
 
@@ -219,6 +220,7 @@
     (loan-id (unwrap! (get-loan-id-by-uuid uuid ) err-cant-get-loan-id-by-uuid ))
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     )
+    (asserts! (is-eq contract-caller 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1) err-unauthorised)
     (asserts! (not (is-eq (get status loan) status-funded)) err-dlc-already-funded)
     (begin
       (try! (set-status loan-id status-funded))
@@ -231,11 +233,15 @@
 ;; amount has 6 decimals e.g. $100 = u100000000
 (define-public (borrow (loan-id uint) (amount uint))
   (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (vault-loan-amount (get vault-loan loan))
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (vault-loan-amount (get vault-loan loan))
+      (collateral (/ (get vault-collateral loan) u100))
+      (fee (get liquidation-fee loan))
+      (next-amount (+ amount vault-loan-amount fee))
     )
     (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
+    (asserts! (<= next-amount collateral) err-borrow-limit-reached)
     (map-set loans loan-id (merge loan { vault-loan: (+ vault-loan-amount amount) }))
     (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount sample-protocol-contract (get owner loan) none)) err-stablecoin-issue-failed)
   )
@@ -290,41 +296,32 @@
 )
 
 ;; @desc Liquidates loan if necessary at given level
-(define-public (attempt-liquidate (btc-price uint) (uuid (buff 32)))
-  (let (
-      (loan-id (unwrap! (get-loan-id-by-uuid uuid) err-cant-get-loan-id-by-uuid ))
-      ;; (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    )
-    (asserts! (unwrap! (check-liquidation loan-id btc-price) err-cant-unwrap-check-liquidation) err-doesnt-need-liquidation)
+(define-public (attempt-liquidate (loan-id uint))
+  (begin
+    (asserts! (unwrap! (check-liquidation loan-id) err-cant-unwrap-check-liquidation) err-doesnt-need-liquidation)
     (print { liquidator: tx-sender })
-    (ok (unwrap! (liquidate-loan loan-id btc-price) err-cant-unwrap-liquidate-loan))
+    (ok (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan))
   )
 )
 
-;; @desc Helper function to calculate if a loan is underwater at a given BTC price
-(define-read-only (check-liquidation (loan-id uint) (btc-price uint))
-  (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (collateral-value (get-collateral-value (get vault-collateral loan) btc-price))
-    (strike-price (/ (* (get vault-loan loan) (get liquidation-ratio loan)) u100000000))
+(define-read-only (check-liquidation (loan-id uint))
+  (let
+    (
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (collateral (get vault-collateral loan))
+      (borrowed (get vault-loan loan))
     )
-    (ok (<= collateral-value strike-price))
+    (ok (not (is-eq u0 borrowed)))
   )
-)
-
-;; @desc Calculating loan collateral value for a given btc-price * (10**8), with pennies precision.
-;; Since the deposit is in Sats, after multiplication we first shift by 2, then ushift by 16 to get pennies precision ($12345.67 = u1234567)
-(define-private (get-collateral-value (btc-deposit uint) (btc-price uint))
-  (unshift-value (shift-value (* btc-deposit btc-price) ten-to-power-2) ten-to-power-16)
 )
 
 ;; @desc An example function to initiate the liquidation of a DLC loan contract.
 ;; If liquidation is required, this function will initiate a simple close-dlc flow with the calculated payout-ratio
-(define-private (liquidate-loan (loan-id uint) (btc-price uint))
+(define-private (liquidate-loan (loan-id uint))
   (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
-    (payout-ratio (unwrap! (get-payout-ratio loan-id btc-price) err-cant-unwrap))
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
+      (payout-ratio (unwrap! (get-payout-ratio loan-id) err-cant-unwrap))
     )
     (begin
       (try! (set-status loan-id status-pre-liquidated))
@@ -333,28 +330,19 @@
   )
 )
 
-;; @desc Returns the resulting payout-ratio at the given btc-price (shifted by 10**8).
-;; This value is sent to the Oracle system for signing a point on the linear payout curve.
-;; using uints, this means return values between 0-10000 (0.00-100.00)
-;; 0.00 means the borrower gets back its deposit, 100.00 means the entire collateral gets taken by the protocol.
-(define-read-only (get-payout-ratio (loan-id uint) (btc-price uint))
-  (let (
+(define-read-only (get-payout-ratio (loan-id uint))
+  (let 
+    (
       (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-      (collateral-value (get-collateral-value (get vault-collateral loan) btc-price))
-      ;; the ratio the protocol has to sell to liquidators:
-      (sell-to-liquidators-ratio (/ (shift-value (get vault-loan loan) ten-to-power-12) collateral-value))
-      ;; the additional liquidation-fee percentage is calculated into the result. Since it is shifted by 10000, we divide:
-      (payout-ratio-precise (+ sell-to-liquidators-ratio (* (/ sell-to-liquidators-ratio u10000) (get liquidation-fee loan))))
-      ;; The final payout-ratio is a truncated version:
-      (payout-ratio (unshift-value payout-ratio-precise ten-to-power-12))
+      (borrowed-amount (get vault-loan loan))
+      (total-locked (get vault-collateral loan))
+      (liquidation-fee (/ (* u1000 borrowed-amount) u10000))
+      (borrowed-plus-liquidation (+ borrowed-amount liquidation-fee))
     )
-    ;; We cap result to be between the desired bounds
-    (begin
-      (if (unwrap! (check-liquidation loan-id btc-price) err-cant-unwrap)
-          (if (>= payout-ratio (shift-value u1 ten-to-power-4))
-            (ok (shift-value u1 ten-to-power-4))
-            (ok payout-ratio))
-        (ok u0)
+    (begin 
+      (if (>= borrowed-plus-liquidation total-locked)
+          (ok u10000)
+          (ok (/ (* borrowed-plus-liquidation u1000) total-locked))
       )
     )
   )

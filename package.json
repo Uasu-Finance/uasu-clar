@@ -1,27 +1,24 @@
 {
-  "name": "dlc-link-uasu",
+  "name": "uasu-clar-tests",
   "version": "1.0.0",
-  "description": "",
-  "main": "scripts/dist/index.js",
-  "bin": "scripts/dist/index.js",
+  "description": "Run unit tests on this project.",
+  "type": "module",
+  "private": true,
   "scripts": {
-    "build": "npx tsc",
-    "dev": "tsc-watch --noClear -p ./tsconfig.json",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:report": "vitest run -- --coverage --costs",
+    "test:watch": "chokidar \"tests/**/*.ts\" \"contracts/**/*.clar\" -c \"npm run test:report\""
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@stacks/network": "^6.5.5",
-    "@stacks/transactions": "^6.7.0",
-    "commander": "^11.0.0",
-    "micro-stacks": "^1.2.1"
-  },
-  "devDependencies": {
-    "@types/node": "^20.5.0",
-    "dotenv": "^16.3.1",
-    "tsc-watch": "^6.0.4",
-    "typescript": "^5.1.6"
+    "@hirosystems/clarinet-sdk": "^1.2.0",
+    "@scure/base": "^1.1.5",
+    "@stacks/transactions": "^6.9.0",
+    "chokidar-cli": "^3.0.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.6",
+    "vitest": "^1.0.1",
+    "vitest-environment-clarinet": "^1.1.0"
   }
 }

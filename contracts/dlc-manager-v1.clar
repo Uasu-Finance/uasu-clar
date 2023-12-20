@@ -150,9 +150,9 @@
       (status (get status dlc))
       (callback-contract-principal (contract-of callback-contract))
     )
-    (asserts! (is-eq protocol-wallet contract-caller) err-unauthorized)
     (asserts! (is-eq (get callback-contract dlc) callback-contract-principal) err-not-connected-callback-contract)
     (asserts! (is-eq status status-created) err-dlc-in-invalid-state-for-request)
+    (asserts! (is-eq protocol-wallet contract-caller) err-unauthorized)
     (map-set dlcs uuid
       (merge
         dlc
