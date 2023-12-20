@@ -80,6 +80,21 @@
   (ok (var-get liquidation_fee))
 )
 
+;; starting value is 0.5% compounded over per 4 week (4032 blocks) intervals
+(define-data-var interest_rate uint u50)
+(define-constant interest-period u209664) ;; applied yearly
+
+(define-public (set-interest-rate (fee uint))
+  (begin
+    (asserts! (is-eq contract-owner tx-sender) err-unauthorised)
+    (var-set interest_rate fee)
+    (ok fee)
+  )
+)
+(define-read-only (get-interest-rate)
+  (ok (var-get interest_rate))
+)
+
 ;; @desc A map to store "loans": information about a DLC
 (define-map loans
   uint ;; The loan-id
@@ -91,6 +106,9 @@
     vault-collateral: uint, ;; btc deposit in sats
     liquidation-ratio: uint, ;; the collateral/loan ratio below which liquidation can happen, with two decimals precision (140% = u14000)
     liquidation-fee: uint,  ;; additional fee taken during liquidation, two decimals precision (10% = u1000)
+    interest-rate: uint,  ;; interest rate, two decimals precision (0.5% = u50)
+    interest-start-height: uint,  ;; burn chain block height
+    interest-total: uint,  ;; the running total of interest accrued
     owner: principal, ;; the stacks account owning this loan
     attestors: (list 32 (tuple (dns (string-ascii 64)))),
     btc-tx-id: (optional (string-ascii 64))
@@ -184,6 +202,7 @@
       (
         (liquidation-ratio (var-get liquidation_ratio))
         (liquidation-fee (var-get liquidation_fee))
+        (interest-rate (var-get interest_rate))
         (loan-id (+ (var-get last-loan-id) u1))
         (target sample-protocol-contract)
         (current-loan-ids (get-creator-loan-ids tx-sender))
@@ -201,6 +220,9 @@
             vault-collateral: btc-deposit,
             liquidation-ratio: liquidation-ratio,
             liquidation-fee: liquidation-fee,
+            interest-rate: interest-rate,
+            interest-start-height: u0,
+            interest-total: u0,
             owner: tx-sender,
             attestors: attestors,
             btc-tx-id: none
@@ -234,6 +256,9 @@
 (define-public (borrow (loan-id uint) (amount uint))
   (let (
       (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (interest-total (get interest-total loan))
+      (interest-rate (get interest-rate loan))
+      (interest-start-height (get interest-start-height loan))
       (vault-loan-amount (get vault-loan loan))
       (collateral (/ (get vault-collateral loan) u100))
       (fee (get liquidation-fee loan))
@@ -242,20 +267,32 @@
     (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
     (asserts! (<= next-amount collateral) err-borrow-limit-reached)
-    (map-set loans loan-id (merge loan { vault-loan: (+ vault-loan-amount amount) }))
+    (map-set loans loan-id (merge loan { vault-loan: (+ vault-loan-amount amount), interest-total: (calc-interest vault-loan-amount interest-start-height interest-rate interest-total), interest-start-height:  burn-block-height }))
     (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount sample-protocol-contract (get owner loan) none)) err-stablecoin-issue-failed)
+  )
+)
+
+(define-private (calc-interest (amount uint) (from-block uint) (rate uint) (interest-total uint))
+  (let (
+      (period (- burn-block-height from-block))
+      (interest (/ (* amount rate) u10000)) ;; note rate is adjusted by 100
+    )
+    (+ interest-total (/ (* period interest) interest-period))
   )
 )
 
 (define-public (repay (loan-id uint) (amount uint))
   (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (vault-loan-amount (get vault-loan loan))
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (vault-loan-amount (get vault-loan loan))
+      (interest-total (get interest-total loan))
+      (interest-rate (get interest-rate loan))
+      (interest-start-height (get interest-start-height loan))
     )
     (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
     (asserts! (>= vault-loan-amount amount) err-balance-negative)
-    (map-set loans loan-id (merge loan { vault-loan: (- vault-loan-amount amount) }))
+    (map-set loans loan-id (merge loan { vault-loan: (- vault-loan-amount amount), interest-total: (calc-interest vault-loan-amount interest-start-height interest-rate interest-total), interest-start-height:  burn-block-height }))
     (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset transfer amount (get owner loan) sample-protocol-contract none)) err-stablecoin-repay-failed)
   )
 )

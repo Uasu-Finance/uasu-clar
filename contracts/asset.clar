@@ -47,6 +47,14 @@
 )
 
 ;; #[allow(unchecked_data)]
+(define-public (mint-to (amount uint) (destination principal))
+    (begin
+        (try! (is-contract-owner))
+        (try! (ft-mint? sbtc amount destination))
+        (ok true)
+    )
+)
+
 (define-public (mint (amount uint)
     (destination principal)
     (deposit-txid (buff 32))
