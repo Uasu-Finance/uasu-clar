@@ -35,8 +35,8 @@ export function getCurrentInterestAndLiquidationFee(id:number, print:booleann) {
   const p1 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-liquidation-fee', [Cl.uint(loan.result.value.data['vault-collateral'].value), Cl.uint(loan.result.value.data['liquidation-fee'].value)], sender)
   if (print) console.log('calc-liquidation-fee: ', p1.result)
   
-  const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-principal', [Cl.bool(false), Cl.uint(loan.result.value.data['vault-loan'].value), Cl.uint(loan.result.value.data['interest-start-height'].value), Cl.uint(loan.result.value.data['interest-rate'].value)], sender)
-  if (print) console.log('calc-principal: ', p0.result)
+  const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-interest', [Cl.uint(loan.result.value.data['vault-loan'].value), Cl.uint(loan.result.value.data['interest-start-height'].value), Cl.uint(loan.result.value.data['interest-rate'].value)], sender)
+  if (print) console.log('calc-interest: ', p0.result)
   
   if (print) console.log('block-height: ' +  simnet.blockHeight)
 

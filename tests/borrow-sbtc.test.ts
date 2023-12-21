@@ -54,16 +54,23 @@ describe("User borrows sbtc", () => {
     //console.log('borrowing fails if no loan setup: ', p1.result.value.data)
   });
 
+  it("Correct interest calculated - borrowing for 20k blocks", () => {
+    simnet.mineEmptyBlocks(20000)
+    const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-interest', [Cl.uint(100000), Cl.uint(0), Cl.uint(500)], sender)
+    console.log('calc-interest: ', p0.result)
+    expect(p0.result).toBeUint(47697);
+  });
+
   it("Correct interest calculated", () => {
-    const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-principal', [Cl.bool(false), Cl.uint(10), Cl.uint(0), Cl.uint(500)], sender)
-    console.log('calc-principal: ', p0.result)
-    expect(p0.result).toBeUint(10);
+    const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-interest', [Cl.uint(100000), Cl.uint(0), Cl.uint(500)], sender)
+    console.log('calc-interest: ', p0.result)
+    expect(p0.result).toBeUint(2);
   });
 
   it("Correct interest calculated with non zero previous interest", () => {
-    const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-principal', [Cl.bool(false), Cl.uint(10), Cl.uint(0), Cl.uint(500)], sender)
-    console.log('calc-principal: ', p0.result)
-    expect(p0.result).toBeUint(10);
+    const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-interest', [Cl.uint(10), Cl.uint(0), Cl.uint(500)], sender)
+    console.log('calc-interest: ', p0.result)
+    expect(p0.result).toBeUint(0);
   });
 
   it("borrowing for amounts exceeding collateral - case b) 10% fee, zero interest", () => {
