@@ -7,6 +7,7 @@ import { hex } from '@scure/base';
 const accounts = simnet.getAccounts();
 const deployer = accounts.get("deployer")!;
 const sender = accounts.get("wallet_1")!;
+const bob = accounts.get("wallet_3")!;
 
 export function mintSBTCToLoanContract(amountSats:number) {
   const functionArgs = [Cl.uint(amountSats), Cl.contractPrincipal(CONFIG.VITE_DLC_DEPLOYER, CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1])]
@@ -20,6 +21,26 @@ export function mintSBTCToLoanContract(amountSats:number) {
     asset_identifier: 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset::sbtc',
     recipient: 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.uasu-sbtc-loan-v2',
   });
+}
+
+export function printLoan(id:number) {
+  const p1 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(id)], sender)
+  console.log('printLoan: ', p1.result.value.data)
+}
+
+export function getCurrentInterestAndLiquidationFee(id:number, print:booleann) {
+  const loan = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(id)], sender)
+  if (print) console.log('printLoan: ', loan.result.value.data)
+  
+  const p1 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-liquidation-fee', [Cl.uint(loan.result.value.data['vault-collateral'].value), Cl.uint(loan.result.value.data['liquidation-fee'].value)], sender)
+  if (print) console.log('calc-liquidation-fee: ', p1.result)
+  
+  const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-principal', [Cl.bool(false), Cl.uint(loan.result.value.data['vault-loan'].value), Cl.uint(loan.result.value.data['interest-start-height'].value), Cl.uint(loan.result.value.data['interest-rate'].value)], sender)
+  if (print) console.log('calc-principal: ', p0.result)
+  
+  if (print) console.log('block-height: ' +  simnet.blockHeight)
+
+  return {fee: p1.result, interest: p0.result, loan: loan.result.value.data, height: simnet.blockHeight}
 }
 
 export function registerContract() {
@@ -43,7 +64,7 @@ export function registerAttestors() {
   }
   
   
-export function setupAndFundLoan(amountSats:number) {
+export function fundVault(amountSats:number) {
     registerContract()
     registerAttestors()
 
@@ -55,7 +76,7 @@ export function setupAndFundLoan(amountSats:number) {
     // setup loan
     const attestorIds = hex.decode('02')
     const functionArgs2 = [Cl.uint(amountSats), Cl.buffer(attestorIds)]
-    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs2, deployer);
+    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs2, bob);
     const val:any = result
     expect(result).toStrictEqual(Cl.ok(Cl.bufferFromHex(hex.encode(val.value.buffer))));
 
