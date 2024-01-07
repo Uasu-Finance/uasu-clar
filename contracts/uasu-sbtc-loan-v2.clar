@@ -1,5 +1,7 @@
-(use-trait cb-trait 'ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3.dlc-link-callback-trait-v1.dlc-link-callback-trait-v1)
-(impl-trait 'ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3.dlc-link-callback-trait-v1.dlc-link-callback-trait-v1)
+;;(use-trait cb-trait 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-link-callback-trait-v1.dlc-link-callback-trait-v1)
+;;(impl-trait 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-link-callback-trait-v1.dlc-link-callback-trait-v1)
+(use-trait cb-trait 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-link-callback-trait-v1-1.dlc-link-callback-trait-v1-1)
+(impl-trait 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-link-callback-trait-v1-1.dlc-link-callback-trait-v1-1)
 
 ;; Error constants
 (define-constant err-cant-unwrap (err u1000))
@@ -16,6 +18,7 @@
 (define-constant err-stablecoin-repay-failed (err u1011))
 (define-constant err-balance-negative (err u1012))
 (define-constant err-not-repaid (err u1013))
+(define-constant err-contract-return-failed (err u1014))
 
 ;; Status Enum
 (define-constant status-ready "ready")
@@ -36,7 +39,7 @@
 (define-constant contract-owner tx-sender)
 
 ;; Contract name bindings
-(define-constant sample-protocol-contract .uasu-sbtc-loan-v1)
+(define-constant sample-protocol-contract .uasu-sbtc-loan-v2)
 
 (define-data-var protocol-wallet-address principal 'ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP)
 
@@ -46,6 +49,9 @@
     (var-set protocol-wallet-address address)
     (ok address)
   )
+)
+(define-read-only (get-protocol-wallet-address)
+  (ok (var-get protocol-wallet-address))
 )
 
 (define-data-var liquidation_ratio uint u14000)
@@ -175,7 +181,7 @@
 ;; - Calls the dlc-manager-contract's create-dlc function to initiate the creation
 ;; The DLC Contract will call back into the provided 'target' contract with the resulting UUID (and the provided loan-id).
 ;; See scripts/setup-loan.ts for an example of calling it.
-(define-public (setup-loan (btc-deposit uint) (attestor-ids (buff 32)))
+(define-public (setup-loan (attestors (list 32 (tuple (dns (string-ascii 64))))) (value-locked uint) (refund-delay uint) (btc-fee-recipient (string-ascii 64)) (btc-fee-basis-points uint))
     (let
       (
         (liquidation-ratio (var-get liquidation_ratio))
@@ -184,9 +190,8 @@
         (target sample-protocol-contract)
         (current-loan-ids (get-creator-loan-ids tx-sender))
           ;; Call to create-dlc returns the list of attestors, as well as the uuid of the dlc
-        (create-return (unwrap-panic (unwrap! (ok (contract-call? 'ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3.dlc-manager-v1 create-dlc target (var-get protocol-wallet-address) attestor-ids)) err-contract-call-failed)))
-        (attestors (get attestors create-return))
-        (uuid (get uuid create-return))
+        (uuid (unwrap! (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1-1 create-dlc value-locked target (var-get protocol-wallet-address) refund-delay btc-fee-recipient btc-fee-basis-points) err-contract-call-failed))
+        ;;(attestors (get attestors create-return))
       )
       (var-set last-loan-id loan-id)
       (begin
@@ -194,7 +199,7 @@
             dlc_uuid: (some uuid),
             status: status-ready,
             vault-loan: u0,
-            vault-collateral: btc-deposit,
+            vault-collateral: value-locked,
             liquidation-ratio: liquidation-ratio,
             liquidation-fee: liquidation-fee,
             owner: tx-sender,
@@ -211,7 +216,7 @@
 
 ;; @desc Externally set a given DLCs status to funded.
 ;; Called by the dlc-manager contract after the necessary BTC events have happened.
-(define-public (set-status-funded (uuid (buff 32)))
+(define-public (set-status-funded (uuid (buff 32)) (btc-tx-id (string-ascii 64)))
   (let (
     (loan-id (unwrap! (get-loan-id-by-uuid uuid ) err-cant-get-loan-id-by-uuid ))
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
@@ -219,7 +224,7 @@
     (asserts! (not (is-eq (get status loan) status-funded)) err-dlc-already-funded)
     (begin
       (try! (set-status loan-id status-funded))
-      ;; (map-set loans loan-id (merge loan { status: status-funded }))
+      (map-set loans loan-id (merge loan { btc-tx-id: (some btc-tx-id) }))
     )
     (ok true)
   )
@@ -234,7 +239,7 @@
     (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
     (map-set loans loan-id (merge loan { vault-loan: (+ vault-loan-amount amount) }))
-    (unwrap! (ok (contract-call? 'ST1R1061ZT6KPJXQ7PAXPFB6ZAZ6ZWW28G8HXK9G5.asset-3 transfer amount sample-protocol-contract (get owner loan) none)) err-stablecoin-issue-failed)
+    (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset-3 transfer amount sample-protocol-contract (get owner loan) none)) err-stablecoin-issue-failed)
   )
 )
 
@@ -247,7 +252,7 @@
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
     (asserts! (>= vault-loan-amount amount) err-balance-negative)
     (map-set loans loan-id (merge loan { vault-loan: (- vault-loan-amount amount) }))
-    (unwrap! (ok (contract-call? 'ST1R1061ZT6KPJXQ7PAXPFB6ZAZ6ZWW28G8HXK9G5.asset-3 transfer amount (get owner loan) sample-protocol-contract none)) err-stablecoin-repay-failed)
+    (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset-3 transfer amount (get owner loan) sample-protocol-contract none)) err-stablecoin-repay-failed)
   )
 )
 
@@ -260,7 +265,7 @@
     (begin
       (asserts! (is-eq (get vault-loan loan) u0) err-not-repaid)
       (try! (set-status loan-id status-pre-repaid))
-      (unwrap! (ok (contract-call? 'ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3.dlc-manager-v1 close-dlc uuid u0)) err-contract-call-failed)
+      (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1-1 close-dlc uuid u0)) err-contract-call-failed)
     )
   )
 )
@@ -289,8 +294,8 @@
 ;; @desc Liquidates loan if necessary at given level
 (define-public (attempt-liquidate (btc-price uint) (uuid (buff 32)))
   (let (
-    (loan-id (unwrap! (get-loan-id-by-uuid uuid) err-cant-get-loan-id-by-uuid ))
-    ;; (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (loan-id (unwrap! (get-loan-id-by-uuid uuid) err-cant-get-loan-id-by-uuid ))
+      ;; (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     )
     (asserts! (unwrap! (check-liquidation loan-id btc-price) err-cant-unwrap-check-liquidation) err-doesnt-need-liquidation)
     (print { liquidator: tx-sender })
@@ -311,8 +316,8 @@
 
 ;; @desc Calculating loan collateral value for a given btc-price * (10**8), with pennies precision.
 ;; Since the deposit is in Sats, after multiplication we first shift by 2, then ushift by 16 to get pennies precision ($12345.67 = u1234567)
-(define-private (get-collateral-value (btc-deposit uint) (btc-price uint))
-  (unshift-value (shift-value (* btc-deposit btc-price) ten-to-power-2) ten-to-power-16)
+(define-private (get-collateral-value (value-locked uint) (btc-price uint))
+  (unshift-value (shift-value (* value-locked btc-price) ten-to-power-2) ten-to-power-16)
 )
 
 ;; @desc An example function to initiate the liquidation of a DLC loan contract.
@@ -325,7 +330,7 @@
     )
     (begin
       (try! (set-status loan-id status-pre-liquidated))
-      (unwrap! (ok (as-contract (contract-call? 'ST1JHQ5GPQT249ZWG6V4AWETQW5DYA5RHJB0JSMQ3.dlc-manager-v1 close-dlc uuid payout-ratio))) err-contract-call-failed)
+      (unwrap! (ok (as-contract (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1-1 close-dlc uuid payout-ratio))) err-contract-call-failed)
     )
   )
 )
@@ -336,14 +341,14 @@
 ;; 0.00 means the borrower gets back its deposit, 100.00 means the entire collateral gets taken by the protocol.
 (define-read-only (get-payout-ratio (loan-id uint) (btc-price uint))
   (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (collateral-value (get-collateral-value (get vault-collateral loan) btc-price))
-    ;; the ratio the protocol has to sell to liquidators:
-    (sell-to-liquidators-ratio (/ (shift-value (get vault-loan loan) ten-to-power-12) collateral-value))
-    ;; the additional liquidation-fee percentage is calculated into the result. Since it is shifted by 10000, we divide:
-    (payout-ratio-precise (+ sell-to-liquidators-ratio (* (/ sell-to-liquidators-ratio u10000) (get liquidation-fee loan))))
-    ;; The final payout-ratio is a truncated version:
-    (payout-ratio (unshift-value payout-ratio-precise ten-to-power-12))
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (collateral-value (get-collateral-value (get vault-collateral loan) btc-price))
+      ;; the ratio the protocol has to sell to liquidators:
+      (sell-to-liquidators-ratio (/ (shift-value (get vault-loan loan) ten-to-power-12) collateral-value))
+      ;; the additional liquidation-fee percentage is calculated into the result. Since it is shifted by 10000, we divide:
+      (payout-ratio-precise (+ sell-to-liquidators-ratio (* (/ sell-to-liquidators-ratio u10000) (get liquidation-fee loan))))
+      ;; The final payout-ratio is a truncated version:
+      (payout-ratio (unshift-value payout-ratio-precise ten-to-power-12))
     )
     ;; We cap result to be between the desired bounds
     (begin

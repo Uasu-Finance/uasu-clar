@@ -100,8 +100,8 @@ plan:
             path: external/dlclink/dlc-stablecoin-v1-1.clar
             clarity-version: 2
         - emulated-contract-publish:
-            contract-name: uasu-sbtc-loan-v1
+            contract-name: uasu-sbtc-loan-v2
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/uasu-sbtc-loan-v1.clar
+            path: contracts/uasu-sbtc-loan-v2.clar
             clarity-version: 2
       epoch: "2.3"

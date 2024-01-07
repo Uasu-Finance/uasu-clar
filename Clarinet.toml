@@ -44,8 +44,8 @@ path = 'external/dlclink/dlc-stablecoin-v1-1.clar'
 clarity_version = 2
 epoch = 2.3
 
-[contracts.uasu-sbtc-loan-v1]
-path = 'contracts/uasu-sbtc-loan-v1.clar'
+[contracts.uasu-sbtc-loan-v2]
+path = 'contracts/uasu-sbtc-loan-v2.clar'
 clarity_version = 2
 epoch = 2.3
 [repl.analysis]
