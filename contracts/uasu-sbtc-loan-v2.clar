@@ -257,15 +257,16 @@
 )
 
 ;; @desc An example function for closing the loan and initiating the closing of a DLC.
-(define-public (close-loan (loan-id uint))
+(define-public (close-loan (loan-id uint) (btc-price uint))
   (let (
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
+    (outcome (unwrap! (get-payout-ratio loan-id btc-price) err-cant-unwrap))
     )
     (begin
       (asserts! (is-eq (get vault-loan loan) u0) err-not-repaid)
       (try! (set-status loan-id status-pre-repaid))
-      (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1-1 close-dlc uuid u0)) err-contract-call-failed)
+      (unwrap! (ok (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1-1 close-dlc uuid outcome)) err-contract-call-failed)
     )
   )
 )
