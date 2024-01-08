@@ -3,22 +3,28 @@ import { Cl } from "@stacks/transactions";
 import { expect } from "vitest";
 import { CONFIG } from "./config";
 import { hex } from '@scure/base';
+import util from 'util'
 
 const accounts = simnet.getAccounts();
 const deployer = accounts.get("deployer")!;
 const sender = accounts.get("wallet_1")!;
 const bob = accounts.get("wallet_3")!;
 
+export const FUNDING_TX = 'f605baef5b5c5a01ba8bc89bacca24a7eea8b0672d36a22964789b06e9608cea'
+export const UUID_1 = '363a1ce7885a4baaf737916fd4a7bd0909c5d46c8606e21a9d7550afdb80c839'
+export const UUID_2 = 'fe57c7fd8853285812a5e21fd31294908aadb20e8712e36dd30f5454df8152d2'
+
 export function mintSBTCToLoanContract(amountSats:number) {
   const functionArgs = [Cl.uint(amountSats), Cl.contractPrincipal(CONFIG.VITE_DLC_DEPLOYER, CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1])]
   const response = simnet.callPublicFn(CONFIG.VITE_SBTC_COORDINATOR_CID.split('.')[1], "mint-to", functionArgs, deployer);
+  //console.log('response.:', response)
+  expect(response.result).toBeOk(Cl.bool(true));
   expect(response.events).toHaveLength(1);
   const printEvent = response.events[0];
   expect(printEvent.event).toBe('ft_mint_event');
-  //console.log('Event.:', printEvent)
   expect(printEvent.data).toStrictEqual({
-    amount: '100000000000',
-    asset_identifier: 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset::sbtc',
+    amount: amountSats + '',
+    asset_identifier: 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset-3::sbtc',
     recipient: 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.uasu-sbtc-loan-v2',
   });
 }
@@ -42,6 +48,17 @@ export function getCurrentInterestAndLiquidationFee(id:number, print:booleann) {
 
   return {fee: p1.result, interest: p0.result, loan: loan.result.value.data, height: simnet.blockHeight}
 }
+//(value-locked uint) (refund-delay uint) (btc-fee-recipient (string-ascii 64)) (btc-fee-basis-points uint)
+export function setupLoanArgs(attestors:Array<any>|undefined, valueLocked:number, refundDelay:number, btcFeeRecipient:string|undefined, btcFeeBasisPoints:number|undefined) {
+  if (!attestors) {
+    attestors = [];
+    attestors.push(Cl.tuple({"dns": Cl.stringAscii('http://172.20.128.5:8801')}));
+  }
+  if (!btcFeeRecipient) btcFeeRecipient = 'tb1q9j0660jr3v8leqhr2tptvcw0jtr538n0fcp878'
+  if (!btcFeeBasisPoints) btcFeeBasisPoints = 1
+  const functionArgs = [Cl.list(attestors), Cl.uint(valueLocked), Cl.uint(refundDelay), Cl.stringAscii(btcFeeRecipient), Cl.uint(btcFeeBasisPoints)]
+  return functionArgs
+}
 
 export function registerContract() {
   const functionArgs = [
@@ -64,9 +81,8 @@ export function registerAttestors() {
   }
   
   
-export function fundVault(amountSats:number) {
+export function fundVault(lockValue:number) {
     registerContract()
-    registerAttestors()
 
     //change protocol wallet address to wallet_1.
     const functionArgs1 = [Cl.principal(sender)]
@@ -74,22 +90,31 @@ export function fundVault(amountSats:number) {
     expect(p1.result).toBeOk(Cl.principal(sender));
 
     // setup loan
-    const attestorIds = hex.decode('02')
-    const functionArgs2 = [Cl.uint(amountSats), Cl.buffer(attestorIds)]
-    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs2, bob);
-    const val:any = result
-    expect(result).toStrictEqual(Cl.ok(Cl.bufferFromHex(hex.encode(val.value.buffer))));
-
+    const functionArgs2 = setupLoanArgs(undefined, lockValue, 0, undefined, 1)
+    const p0 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs2, bob);
+    expect(p0.result).toStrictEqual(Cl.ok(Cl.bufferFromHex(hex.encode(p0.result.value.buffer))));
+    //console.log('= 1. setup-loan ========================================================')
+    //console.log('uuid: ', hex.encode(p0.result.value.buffer))
+    //console.log('dlclink:create-dlc:v1: ', util.inspect(p0.events[0], false, null, true /* enable colors */));
+    //console.log('nft_mint_event: ', p0.result.value.buffer);
     // get the manager to callback to the loan contract to simulate funded.
-    //console.log((val.value.buffer))
-    //console.log(Cl.bufferFromHex('badd65ae692ebb71d71965e0e89112a73fe29ccf1793df63ddcaa03349ed3ed8'))
-    //console.log(Cl.contractPrincipal(deployer, CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1]))
     const functionArgs3 = [
-      Cl.buffer(val.value.buffer),
+      Cl.buffer(p0.result.value.buffer),
+      Cl.stringAscii(FUNDING_TX),
       Cl.contractPrincipal(deployer, CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1])
     ]
+
     const p:ParsedTransactionResult = simnet.callPublicFn(CONFIG.VITE_DLC_MANAGER_CID.split('.')[1], "set-status-funded", functionArgs3, sender);
-    //console.log(p.result)
+    //console.log('= 2. set-status-funded ========================================================')
+    //console.log('set-status-funded dlc-manager-v1-1: ', util.inspect(p.events[0], false, null, true /* enable colors */));
+    //console.log('set-status-funded : uasu-sbtc-loan-v2', util.inspect(p.events[1], false, null, true /* enable colors */));
     expect(p.result).toBeOk(Cl.bool(true));
+    simnet.mineEmptyBlocks(15)
+
+    const loan = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(1)], sender)
+    //console.log('loan: ', util.inspect(loan, false, null, true /* enable colors */));
+    expect(loan.result.value.data.status).toBeAscii('funded');
+    expect(loan.result.value.data['btc-tx-id'].value).toStrictEqual(Cl.stringAscii(FUNDING_TX));
+
 }
 

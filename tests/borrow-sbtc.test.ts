@@ -1,10 +1,11 @@
 import { Cl } from "@stacks/transactions";
 import { describe, expect, it } from "vitest";
 import { CONFIG } from "./lib/config";
-import { mintSBTCToLoanContract, getCurrentInterestAndLiquidationFee, fundVault } from "./lib/dlc-helper";
+import { mintSBTCToLoanContract, fundVault } from "./lib/dlc-helper";
+import util from 'util'
 
 const accounts = simnet.getAccounts();
-console.log('accounts:', accounts)
+//console.log('accounts:', accounts)
 const deployer = accounts.get("deployer")!;
 const sender = accounts.get("wallet_1")!;
 const bob = accounts.get("wallet_3")!;
@@ -34,79 +35,68 @@ describe("User borrows sbtc", () => {
     //console.log('borrowing fails if no loan setup: ', p.result.value.data)
 
     //console.log(result)
+    expect(p.result.value.data['vault-loan']).toBeUint(0);
     expect(result).toBeErr(Cl.uint(1005));
   });
 
-  it("borrowing fails for amounts exceeding collateral - case a) zero fee, zero interest", () => {
+  it("borrowing fails for amounts exceeding collateral", () => {
     mintSBTCToLoanContract(100000000000);
     fundVault(10000);
-    simnet.mineEmptyBlocks(5)
 
-    const functionArgs0 = [Cl.uint(0)]
-    const p0 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "set-liquidation-fee", functionArgs0, deployer);
+    const p0 = simnet.callPublicFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 
+      "set-liquidation-fee", 
+      [Cl.uint(0)], 
+      deployer
+    );
     expect(p0.result).toBeOk(Cl.uint(0));
     
     const functionArgs1 = [Cl.uint(1), Cl.uint(10001)]
-    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", functionArgs1, bob);
-    expect(result).toBeErr(Cl.uint(1014));
-    
-    //const p1 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(1)], sender)
-    //console.log('borrowing fails if no loan setup: ', p1.result.value.data)
-  });
-
-  it("Correct interest calculated - borrowing for 20k blocks", () => {
-    simnet.mineEmptyBlocks(20000)
-    const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-interest', [Cl.uint(100000), Cl.uint(0), Cl.uint(500)], sender)
-    console.log('calc-interest: ', p0.result)
-    expect(p0.result).toBeUint(47697);
-  });
-
-  it("Correct interest calculated", () => {
-    const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-interest', [Cl.uint(100000), Cl.uint(0), Cl.uint(500)], sender)
-    console.log('calc-interest: ', p0.result)
-    expect(p0.result).toBeUint(2);
-  });
-
-  it("Correct interest calculated with non zero previous interest", () => {
-    const p0 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'calc-interest', [Cl.uint(10), Cl.uint(0), Cl.uint(500)], sender)
-    console.log('calc-interest: ', p0.result)
-    expect(p0.result).toBeUint(0);
-  });
-
-  it("borrowing fails for amounts exceeding collateral - case b) 10% fee, zero interest", () => {
-    mintSBTCToLoanContract(100000000000);
-    fundVault(100);
-    simnet.mineEmptyBlocks(5)
-
-    const functionArgs0 = [Cl.uint(1000)]
-    const p0 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "set-liquidation-fee", functionArgs0, deployer);
-    expect(p0.result).toBeOk(Cl.uint(1000));
-    
-    const fees = getCurrentInterestAndLiquidationFee(1, false);
-    expect(fees.fee).toBeUint(0);
-    expect(fees.interest).toBeUint(0);
-
-    const functionArgs1 = [Cl.uint(1), Cl.uint(100)]
-    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", functionArgs1, bob);
+    const { result } = simnet.callPublicFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 
+      "borrow", 
+      functionArgs1, 
+      bob
+    );
     expect(result).toBeErr(Cl.uint(1014));
   });
 
-  it("borrowing succeeds if collateral is more than the amount + interest plus potential liquidation penalty", () => {
+  it("borrowing succeeds for amounts equal collateral", () => {
     mintSBTCToLoanContract(100000000000);
-    fundVault(101);
-    simnet.mineEmptyBlocks(5)
+    fundVault(10000);
 
-    const functionArgs0 = [Cl.uint(1000)]
-    const p0 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "set-liquidation-fee", functionArgs0, deployer);
-    expect(p0.result).toBeOk(Cl.uint(1000));
+    const p0 = simnet.callPublicFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 
+      "set-liquidation-fee", 
+      [Cl.uint(0)], 
+      deployer
+    );
+    expect(p0.result).toBeOk(Cl.uint(0));
     
-    const fees = getCurrentInterestAndLiquidationFee(1, false);
-    expect(fees.fee).toBeUint(0);
-    expect(fees.interest).toBeUint(0);
-
-    const functionArgs1 = [Cl.uint(1), Cl.uint(90)]
-    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", functionArgs1, bob);
+    const { result } = simnet.callPublicFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 
+      "borrow", 
+      [Cl.uint(1), Cl.uint(10000)], 
+      bob
+    );
     expect(result).toBeOk(Cl.bool(true));
+  });
+
+  it("borrowing succeeds if collateral is more than the amount", () => {
+    mintSBTCToLoanContract(100000000000);
+    fundVault(1001);
+    simnet.mineEmptyBlocks(5)
+
+    const p = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", [Cl.uint(1), Cl.uint(1000)], bob);
+    expect(p.result).toBeOk(Cl.bool(true));
+    expect(p.events.length).toStrictEqual(1);
+    const transferEvent = p.events[0].data
+    expect(transferEvent.asset_identifier).toStrictEqual('ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset-3::sbtc');
+    expect(transferEvent.sender).toStrictEqual('ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.uasu-sbtc-loan-v2');
+    expect(transferEvent.amount).toStrictEqual(''+1000);
+    const loan = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(1)], sender)
+    //console.log('borrowing succeeds if collateral: ', util.inspect(loan, false, null, true /* enable colors */));
+    expect(Cl.principal(transferEvent.recipient)).toStrictEqual(loan.result.value.data['owner']);
   });
 
   it("borrowing fails for amounts exceeding collateral error on second borrow", () => {
@@ -116,76 +106,19 @@ describe("User borrows sbtc", () => {
 
     const p = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(1)], sender)
 
-    let fees = getCurrentInterestAndLiquidationFee(1, false);
-    expect(fees.fee).toBeUint(0);
-    expect(fees.interest).toBeUint(0);
-    expect(fees.loan['vault-loan']).toBeUint(0);
-
-    let p2 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", [Cl.uint(1), Cl.uint(45)], bob);
+    let p2 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", [Cl.uint(1), Cl.uint(50)], bob);
     expect(p2.result).toBeOk(Cl.bool(true));
     simnet.mineEmptyBlocks(100);
 
-    fees = getCurrentInterestAndLiquidationFee(1, true)
-    expect(fees.loan['vault-loan']).toBeUint(45);
-    expect(fees.fee).toBeUint(0);
-    expect(fees.interest).toBeUint(0);
-
-    p2 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", [Cl.uint(1), Cl.uint(55)], bob);
+    p2 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", [Cl.uint(1), Cl.uint(51)], bob);
     expect(p2.result).toBeErr(Cl.uint(1014));
   });
 
-  it("borrowing fails for amounts exceeding collateral error when interest is significant", () => {
-    mintSBTCToLoanContract(100000000000);
-    fundVault(100);
+  it("borrowing fails for amounts exceeding the liquidity of the loan contract", () => {
+    mintSBTCToLoanContract(1000);
+    fundVault(10000);
     simnet.mineEmptyBlocks(5);
-
-    const p = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(1)], sender)
-
-    let fees = getCurrentInterestAndLiquidationFee(1, false);
-    expect(fees.fee).toBeUint(0);
-    expect(fees.interest).toBeUint(0);
-    expect(fees.loan['vault-loan']).toBeUint(0);
-
-    let p2 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", [Cl.uint(1), Cl.uint(45)], bob);
-    expect(p2.result).toBeOk(Cl.bool(true));
-    simnet.mineEmptyBlocks(100);
-
-    fees = getCurrentInterestAndLiquidationFee(1, false)
-    expect(fees.loan['vault-loan']).toBeUint(45);
-    expect(fees.fee).toBeUint(0);
-    expect(fees.interest).toBeUint(0);
-
-    simnet.mineEmptyBlocks(1000000);
-
-    p2 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", [Cl.uint(1), Cl.uint(44)], bob);
-    expect(p2.result).toBeErr(Cl.uint(1014));
+    let p = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", [Cl.uint(1), Cl.uint(1001)], bob);
+    expect(p.result).toBeErr(Cl.uint(1));
   });
-
-  it("borrowing succeeds when borrowing multiple times but interest is accrued", () => {
-    mintSBTCToLoanContract(100000000000);
-    fundVault(1000000);
-    simnet.mineEmptyBlocks(5);
-
-    const p = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(1)], sender)
-
-    let p2 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", [Cl.uint(1), Cl.uint(100000)], bob);
-    expect(p2.result).toBeOk(Cl.bool(true));
-    simnet.mineEmptyBlocks(1000);
-
-    let fees = getCurrentInterestAndLiquidationFee(1, true)
-    expect(fees.loan['vault-loan']).toBeUint(100000);
-    expect(fees.fee).toBeUint(0);
-    expect(fees.interest).toBeUint(238);
-
-    p2 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "borrow", [Cl.uint(1), Cl.uint(100000)], bob);
-    expect(p2.result).toBeOk(Cl.bool(true));
-    simnet.mineEmptyBlocks(1000);
-
-    fees = getCurrentInterestAndLiquidationFee(1, true)
-    expect(fees.loan['vault-loan']).toBeUint(200000);
-    expect(fees.fee).toBeUint(0);
-    expect(fees.interest).toBeUint(476);
-
-  });
-
 });

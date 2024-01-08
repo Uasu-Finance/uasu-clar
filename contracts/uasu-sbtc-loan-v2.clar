@@ -41,6 +41,7 @@
 
 ;; Contract name bindings
 (define-constant sample-protocol-contract .uasu-sbtc-loan-v2)
+(define-constant dlc-manager-address 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1-1)
 
 (define-data-var protocol-wallet-address principal 'ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP)
 
@@ -222,11 +223,11 @@
     (loan-id (unwrap! (get-loan-id-by-uuid uuid ) err-cant-get-loan-id-by-uuid ))
     (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
     )
-    (asserts! (is-eq contract-caller 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1) err-unauthorised)
+    (asserts! (is-eq contract-caller dlc-manager-address) err-unauthorised)
     (asserts! (not (is-eq (get status loan) status-funded)) err-dlc-already-funded)
     (begin
-      (try! (set-status loan-id status-funded))
       (map-set loans loan-id (merge loan { btc-tx-id: (some btc-tx-id) }))
+      (try! (set-status loan-id status-funded))
     )
     (ok true)
   )
@@ -238,8 +239,7 @@
       (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
       (vault-loan-amount (get vault-loan loan))
       (collateral (get vault-collateral loan))
-      (fee (get liquidation-fee loan))
-      (next-amount (+ amount vault-loan-amount fee))
+      (next-amount (+ amount vault-loan-amount))
     )
     (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)
@@ -251,8 +251,8 @@
 
 (define-public (repay (loan-id uint) (amount uint))
   (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (vault-loan-amount (get vault-loan loan))
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (vault-loan-amount (get vault-loan loan))
     )
     (asserts! (is-eq (get owner loan) tx-sender) err-unauthorised)
     (asserts! (is-eq (get status loan) status-funded) err-dlc-not-funded)

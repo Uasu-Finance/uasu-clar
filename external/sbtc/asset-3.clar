@@ -1,3 +1,11 @@
+(define-public (mint-to (amount uint)
+    (destination principal))
+    (begin
+        (try! (ft-mint? sbtc amount destination))
+        (ok true)
+    )
+)
+
 ;; title: wrapped BTC on Stacks
 ;; version: 0.1.0
 ;; summary: sBTC dev release asset contract
