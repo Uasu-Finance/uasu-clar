@@ -1,7 +1,7 @@
 import { Cl } from "@stacks/transactions";
 import { describe, expect, it } from "vitest";
 import { CONFIG } from "./lib/config";
-import { mintSBTCToLoanContract, getCurrentInterestAndLiquidationFee, fundVault } from "./lib/dlc-helper";
+import { mintSBTCToLoanContract, fundVault } from "./lib/dlc-helper";
 
 const accounts = simnet.getAccounts();
 console.log('accounts:', accounts)
