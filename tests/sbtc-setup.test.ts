@@ -115,4 +115,24 @@ describe("loan setup tests", () => {
     expect(close.result).toBeOk(Cl.bool(true));
   });
 
+  it("ensure anyone who is not the vault owner can close-loan (rename it to close-vault) even without it being flagged as funded", () => {
+    registerContract() // dlc-manager-v1-1 has uasu-sbtc-loan-v2 NFT
+
+    // setup loan
+    const functionArgs2 = setupLoanArgs(undefined, 10000, 0, undefined, 1)
+    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs2, alice);
+    const val:any = result
+    expect(result).toStrictEqual(Cl.ok(Cl.bufferFromHex(hex.encode(val.value.buffer))));
+
+    // Even if the vault wasn't flagged as funded, alice can close-loan
+    const close = simnet.callPublicFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1],
+      "close-loan",
+      [Cl.uint(1)],
+      sender
+    );
+    // expect ok true because dlc-manager-v1-1 burns the NFT open-dlc nft-burn? returns ok true
+    expect(close.result).toBeOk(Cl.bool(true));
+  });
+
 });
