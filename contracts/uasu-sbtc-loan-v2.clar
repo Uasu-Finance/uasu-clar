@@ -11,7 +11,7 @@
 (define-constant err-cant-unwrap-liquidate-loan (err u1004))
 (define-constant err-unauthorised (err u1005))
 (define-constant err-unknown-loan-contract (err u1006))
-(define-constant err-doesnt-need-liquidation (err u1007))
+(define-constant err-does-not-need-liquidation (err u1007))
 (define-constant err-dlc-already-funded (err u1008))
 (define-constant err-dlc-not-funded (err u1009))
 (define-constant err-stablecoin-issue-failed (err u1010))
@@ -300,20 +300,20 @@
 ;; @desc Liquidates loan if necessary at given level
 (define-public (attempt-liquidate (loan-id uint))
   (begin
-    (asserts! (unwrap! (check-liquidation loan-id) err-cant-unwrap-check-liquidation) err-doesnt-need-liquidation)
+    (asserts! (unwrap! (check-liquidation loan-id) err-cant-unwrap-check-liquidation) err-does-not-need-liquidation)
     (print { liquidator: tx-sender })
-    (ok (unwrap! (liquidate-loan loan-id) err-cant-unwrap-liquidate-loan))
+    (liquidate-loan loan-id)
   )
 )
 
+;; if (amount borrowed/collateral)*100 >= ratio then true
 (define-read-only (check-liquidation (loan-id uint))
-  (let
-    (
-      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-      (collateral (get vault-collateral loan))
-      (borrowed (get vault-loan loan))
+  (let (
+    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+    (collateral (get vault-collateral loan))
+    (loan-amount (get vault-loan loan))
     )
-    (ok (not (is-eq u0 borrowed)))
+    (ok (>= (* loan-amount u10000) (* collateral (get liquidation-ratio loan))))
   )
 )
 
@@ -321,9 +321,9 @@
 ;; If liquidation is required, this function will initiate a simple close-dlc flow with the calculated payout-ratio
 (define-private (liquidate-loan (loan-id uint))
   (let (
-    (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
-    (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
-    (payout-ratio (unwrap! (get-payout-ratio loan-id) err-cant-unwrap))
+      (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
+      (uuid (unwrap! (get dlc_uuid loan) err-cant-unwrap))
+      (payout-ratio (unwrap! (get-payout-ratio loan-id) err-cant-unwrap))
     )
     (begin
       (try! (set-status loan-id status-pre-liquidated))
@@ -342,14 +342,15 @@
       (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
       (borrowed-amount (get vault-loan loan))
       (total-locked (get vault-collateral loan))
-      (liquidation-fee (/ (* u1000 borrowed-amount) u10000))
-      (borrowed-plus-liquidation (+ borrowed-amount liquidation-fee))
+      (fee (/ (* (var-get liquidation_fee) borrowed-amount) u10000))
+      (borrowed-plus-liquidation (+ borrowed-amount fee))
     )
     (begin 
       (if (>= borrowed-plus-liquidation total-locked)
           (ok u10000)
-          (ok (/ (* borrowed-plus-liquidation u1000) total-locked))
+          (ok (/ (* borrowed-plus-liquidation u10000) total-locked))
       )
     )
+
   )
 )

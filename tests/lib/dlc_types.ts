@@ -40,6 +40,7 @@ export type DLC = {
 
 export function dlcConvertor(contractData:any):DLC {
   const data = contractData.result.value.data
+  //console.log('dlcConvertor: ', util.inspect(contractData, false, null, true /* enable colors */));
   return {
     btcFeeBasisPoints: Number(data['btc-fee-basis-points'].value),
     btcFeeRecipient: data['btc-fee-recipient'].data,
@@ -48,7 +49,7 @@ export function dlcConvertor(contractData:any):DLC {
     closingTxId: (data['closing-tx-id'].type !== 9) ? data['closing-tx-id'].value.data : undefined,
     fundingTxId: (data['funding-tx-id'].type !== 9) ? data['funding-tx-id'].value.data : undefined,
     creator: c32address(data['creator'].address.version, data['creator'].address.hash160),
-    outcome: Number(data['outcome'].value.value),
+    outcome: (data['outcome'].type !== 9) ? Number(data['outcome'].value.value) : 0,
     protocolWallet: c32address(data['protocol-wallet'].address.version, data['protocol-wallet'].address.hash160),
     refundDelay: Number(data['refund-delay'].value),
     status: Number(data['status'].value),
@@ -59,7 +60,7 @@ export function dlcConvertor(contractData:any):DLC {
 
 export function loanConvertor(contractData:any):Loan {
   const data = contractData.result.value.data
-  console.log('loanConvertor: ', util.inspect(data, false, null, true /* enable colors */));
+  //console.log('loanConvertor: ', util.inspect(data, false, null, true /* enable colors */));
   const attestorList = []
   for (const att of data['attestors'].list) {
     attestorList.push(att.data.dns.data)

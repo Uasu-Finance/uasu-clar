@@ -14,8 +14,8 @@ export const FUNDING_TX = 'f605baef5b5c5a01ba8bc89bacca24a7eea8b0672d36a22964789
 export const UUID_1 = '363a1ce7885a4baaf737916fd4a7bd0909c5d46c8606e21a9d7550afdb80c839'
 export const UUID_2 = 'fe57c7fd8853285812a5e21fd31294908aadb20e8712e36dd30f5454df8152d2'
 
-export function convertReadDLC(uuid:Uint8Array) {
-  const dlc = simnet.callReadOnlyFn(CONFIG.VITE_DLC_MANAGER_CID.split('.')[1], 'get-dlc', [Cl.buffer(uuid)], sender)
+export function convertReadDLC(uuid:string) {
+  const dlc = simnet.callReadOnlyFn(CONFIG.VITE_DLC_MANAGER_CID.split('.')[1], 'get-dlc', [Cl.buffer(hex.decode(uuid))], sender)
   return dlcConvertor(dlc)
 }
 
@@ -75,6 +75,22 @@ export function registerContract() {
     Cl.contractPrincipal(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[0], CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1])
   ]
   let p = simnet.callPublicFn(CONFIG.VITE_DLC_MANAGER_CID.split('.')[1], "register-contract", functionArgs, deployer);
+  //expect(p.result).toBeBool(true);
+}
+
+export function setLiquidationRatio(ratio:number) {
+  const functionArgs = [
+    Cl.uint(ratio)
+  ]
+  let p = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "set-liquidation-ratio", functionArgs, deployer);
+  //expect(p.result).toBeBool(true);
+}
+
+export function setLiquidationFee(fee:number) {
+  const functionArgs = [
+    Cl.uint(fee)
+  ]
+  let p = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "set-liquidation-fee", functionArgs, deployer);
   //expect(p.result).toBeBool(true);
 }
 

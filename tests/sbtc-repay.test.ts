@@ -3,12 +3,9 @@ import { describe, expect, it } from "vitest";
 import { CONFIG } from "./lib/config";
 import { mintSBTCToLoanContract, fundVault, FUNDING_TX, convertReadDLC, convertReadLoan } from "./lib/dlc-helper";
 import util from 'util'
-import { c32address } from 'c32check';
 import { hex } from '@scure/base';
 
 const accounts = simnet.getAccounts();
-//console.log('accounts:', accounts)
-const protWallet = accounts.get("protocol_wallet")!;
 const deployer = accounts.get("deployer")!;
 const sender = accounts.get("wallet_1")!;
 const bob = accounts.get("wallet_3")!;
@@ -206,7 +203,7 @@ describe("Closure of loans ", () => {
 
     //console.log('dlc closure 1: ', util.inspect(loan, false, null, true /* enable colors */));
     
-    const dlc = convertReadDLC(hex.decode(loan.uuid!))
+    const dlc = convertReadDLC(loan.uuid!)
     //console.log('dlc closure 2: ', util.inspect(dlc, false, null, true /* enable colors */));
     //console.log('dlc closure protWallet: ', util.inspect(dlc, false, null, true /* enable colors */));
 
@@ -228,6 +225,9 @@ describe("Closure of loans ", () => {
     fundVault(100);
     simnet.mineEmptyBlocks(5);
 
+    let loan = convertReadLoan(1)
+    expect('funded').toStrictEqual(loan.status);
+
     const close = simnet.callPublicFn(
       CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 
       "close-loan", 
@@ -237,13 +237,14 @@ describe("Closure of loans ", () => {
     expect(close.result).toBeOk(Cl.bool(true));
     expect(close.events.length).toStrictEqual(3);
 
-    const loan = convertReadLoan(1)
+    loan = convertReadLoan(1)
     expect(0).toStrictEqual(loan.vaultLoan);
+    expect('pre-repaid').toStrictEqual(loan.status);
 
-    const dlc = convertReadDLC(hex.decode(loan.uuid!))
+    const dlc = convertReadDLC(loan.uuid!)
     const wallet = (dlc.protocolWallet)
 
-    //console.log('dlc closure 1: ', util.inspect(loan.result.value.data, false, null, true /* enable colors */));
+    console.log('dlc closure 1: ', util.inspect(loan, false, null, true /* enable colors */));
     //console.log('dlc closure 2: ', util.inspect(dlc, false, null, true /* enable colors */));
 
     console.log('dlc closure protWallet: ', util.inspect(wallet, false, null, true /* enable colors */));
@@ -259,6 +260,8 @@ describe("Closure of loans ", () => {
       functionArgs3,
       sender);
     expect(p.result).toBeOk(Cl.bool(true));
+    loan = convertReadLoan(1)
+    expect('repaid').toStrictEqual(loan.status);
   });
 
 });
