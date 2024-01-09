@@ -8,6 +8,7 @@ import { FUNDING_TX, UUID_2, registerContract, setupLoanArgs } from "./lib/dlc-h
 const accounts = simnet.getAccounts();
 const deployer = accounts.get("deployer")!;
 const sender = accounts.get("wallet_1")!;
+const alice = accounts.get("wallet_4")!; // wallet_2 doesn't exist
 
 
 describe("loan setup tests", () => {
@@ -62,12 +63,12 @@ describe("loan setup tests", () => {
     expect(result).toStrictEqual(Cl.ok(Cl.bufferFromHex(UUID_2)));
 
     const functionArgs2 = [
-      Cl.buffer(hex.decode(UUID_2)), 
+      Cl.buffer(hex.decode(UUID_2)),
       Cl.stringAscii(FUNDING_TX)
     ]
     const p:ParsedTransactionResult = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "set-status-funded", functionArgs2, sender);
     expect(p.result).toBeErr(Cl.uint(1005));
-  }); 
+  });
 
   it("ensure loan can be locked by dlc-manager", () => {
     registerContract()
@@ -91,6 +92,47 @@ describe("loan setup tests", () => {
     expect(p.result).toBeOk(Cl.bool(true));
     const p2 = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(1)], sender)
     expect(p2.result.value.data['btc-tx-id'].value).toStrictEqual(Cl.stringAscii(FUNDING_TX));
-  }); 
+  });
+
+  it("ensure vault owner can close-loan (rename it close-vault) even without it being flagged as funded", () => {
+    registerContract() // dlc-manager-v1-1 has uasu-sbtc-loan-v2 NFT
+
+    // setup loan
+    const functionArgs2 = setupLoanArgs(undefined, 10000, 0, undefined, 1)
+    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs2, alice);
+    const val:any = result
+    expect(result).toStrictEqual(Cl.ok(Cl.bufferFromHex(hex.encode(val.value.buffer))));
+
+    // Even if the vault wasn't flagged as funded, alice can close-loan
+    const close = simnet.callPublicFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1],
+      "close-loan",
+      [Cl.uint(1)],
+      alice
+    );
+    // expect ok true because dlc-manager-v1-1 burns the NFT open-dlc nft-burn? returns ok true
+    // console.log("Rafa quick test", close);
+    expect(close.result).toBeOk(Cl.bool(true));
+  });
+
+  it("ensure anyone who is not the vault owner can close-loan (rename it to close-vault) even without it being flagged as funded", () => {
+    registerContract() // dlc-manager-v1-1 has uasu-sbtc-loan-v2 NFT
+
+    // setup loan
+    const functionArgs2 = setupLoanArgs(undefined, 10000, 0, undefined, 1)
+    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs2, alice);
+    const val:any = result
+    expect(result).toStrictEqual(Cl.ok(Cl.bufferFromHex(hex.encode(val.value.buffer))));
+
+    // Even if the vault wasn't flagged as funded, alice can close-loan
+    const close = simnet.callPublicFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1],
+      "close-loan",
+      [Cl.uint(1)],
+      sender
+    );
+    // expect ok true because dlc-manager-v1-1 burns the NFT open-dlc nft-burn? returns ok true
+    expect(close.result).toBeOk(Cl.bool(true));
+  });
 
 });
