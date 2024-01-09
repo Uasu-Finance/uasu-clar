@@ -5,7 +5,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "vitest watch",
+    "test": "vitest",
     "watch": "vitest watch",
     "test:report": "vitest run -- --coverage --costs",
     "test:watch": "chokidar \"tests/**/*.ts\" \"contracts/**/*.clar\" -c \"npm run test:report\""
@@ -16,6 +16,7 @@
     "@hirosystems/clarinet-sdk": "^1.2.0",
     "@scure/base": "^1.1.5",
     "@stacks/transactions": "^6.9.0",
+    "c32check": "^2.0.0",
     "chokidar-cli": "^3.0.0",
     "typescript": "^5.2.2",
     "vite": "^5.0.6",

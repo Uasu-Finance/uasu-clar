@@ -1,7 +1,7 @@
 import { Cl } from "@stacks/transactions";
 import { describe, expect, it } from "vitest";
 import { CONFIG } from "./lib/config";
-import { mintSBTCToLoanContract, fundVault } from "./lib/dlc-helper";
+import { mintSBTCToLoanContract, fundVault, convertReadLoan } from "./lib/dlc-helper";
 import util from 'util'
 
 const accounts = simnet.getAccounts();
@@ -94,9 +94,10 @@ describe("User borrows sbtc", () => {
     expect(transferEvent.asset_identifier).toStrictEqual('ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.asset-3::sbtc');
     expect(transferEvent.sender).toStrictEqual('ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.uasu-sbtc-loan-v2');
     expect(transferEvent.amount).toStrictEqual(''+1000);
-    const loan = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(1)], sender)
+
+    const loan = convertReadLoan(1)
     //console.log('borrowing succeeds if collateral: ', util.inspect(loan, false, null, true /* enable colors */));
-    expect(Cl.principal(transferEvent.recipient)).toStrictEqual(loan.result.value.data['owner']);
+    expect(transferEvent.recipient).toStrictEqual(loan.owner);
   });
 
   it("borrowing fails for amounts exceeding collateral error on second borrow", () => {

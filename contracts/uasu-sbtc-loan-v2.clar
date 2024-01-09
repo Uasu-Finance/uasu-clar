@@ -233,7 +233,7 @@
   )
 )
 
-;; amount is sBTC and has 8 decimals e.g. $100 = u100000000
+;; amount is sBTC and has 8 decimals
 (define-public (borrow (loan-id uint) (amount uint))
   (let (
       (loan (unwrap! (get-loan loan-id) err-unknown-loan-contract))
