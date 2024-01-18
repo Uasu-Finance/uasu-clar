@@ -200,8 +200,8 @@
 ;; - Increments the loan-id
 ;; - Calls the dlc-manager-contract's create-dlc function to initiate the creation
 ;; The DLC Contract will call back into the provided 'target' contract with the resulting UUID (and the provided loan-id).
-;; See scripts/setup-loan.ts for an example of calling it.
-(define-public (setup-loan (attestors (list 32 (tuple (dns (string-ascii 64))))) (value-locked uint) (refund-delay uint) (btc-fee-recipient (string-ascii 64)) (btc-fee-basis-points uint))
+;; See scripts/setup-vault.ts for an example of calling it.
+(define-public (setup-vault (attestors (list 32 (tuple (dns (string-ascii 64))))) (value-locked uint) (refund-delay uint) (btc-fee-recipient (string-ascii 64)) (btc-fee-basis-points uint))
     (let
       (
         (liquidation-ratio (var-get liquidation_ratio))

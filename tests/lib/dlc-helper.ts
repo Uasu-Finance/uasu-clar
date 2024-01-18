@@ -21,7 +21,7 @@ export function convertReadDLC(uuid:string) {
 
 export function convertReadLoan(loanId:number) {
   const loan = simnet.callReadOnlyFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 'get-loan', [Cl.uint(loanId)], sender)
-  return loanConvertor(loan)
+  return loanConvertor(loan.result.value.data)
 }
 
 export function mintSBTCToLoanContract(amountSats:number) {
@@ -59,14 +59,10 @@ export function getCurrentInterestAndLiquidationFee(id:number, print:booleann) {
   return {fee: p1.result, interest: p0.result, loan: loan, height: simnet.blockHeight}
 }
 //(value-locked uint) (refund-delay uint) (btc-fee-recipient (string-ascii 64)) (btc-fee-basis-points uint)
-export function setupLoanArgs(attestors:Array<any>|undefined, valueLocked:number, refundDelay:number, btcFeeRecipient:string|undefined, btcFeeBasisPoints:number|undefined) {
-  if (!attestors) {
-    attestors = [];
-    attestors.push(Cl.tuple({"dns": Cl.stringAscii('http://172.20.128.5:8801')}));
-  }
+export function setupLoanArgs(valueLocked:number, refundDelay:number, btcFeeRecipient:string|undefined, btcFeeBasisPoints:number|undefined) {
   if (!btcFeeRecipient) btcFeeRecipient = 'tb1q9j0660jr3v8leqhr2tptvcw0jtr538n0fcp878'
   if (!btcFeeBasisPoints) btcFeeBasisPoints = 1
-  const functionArgs = [Cl.list(attestors), Cl.uint(valueLocked), Cl.uint(refundDelay), Cl.stringAscii(btcFeeRecipient), Cl.uint(btcFeeBasisPoints)]
+  const functionArgs = [Cl.uint(valueLocked), Cl.uint(refundDelay), Cl.stringAscii(btcFeeRecipient), Cl.uint(btcFeeBasisPoints)]
   return functionArgs
 }
 
@@ -116,10 +112,10 @@ export function fundVault(lockValue:number) {
     expect(p1.result).toBeOk(Cl.principal(sender));
 
     // setup loan
-    const functionArgs2 = setupLoanArgs(undefined, lockValue, 0, undefined, 1)
-    const p0 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs2, bob);
+    const functionArgs2 = setupLoanArgs(lockValue, 0, undefined, 1)
+    const p0 = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-vault", functionArgs2, bob);
     expect(p0.result).toStrictEqual(Cl.ok(Cl.bufferFromHex(hex.encode(p0.result.value.buffer))));
-    //console.log('= 1. setup-loan ========================================================')
+    //console.log('= 1. setup-vault ========================================================')
     //console.log('uuid: ', hex.encode(p0.result.value.buffer))
     //console.log('dlclink:create-dlc:v1: ', util.inspect(p0.events[0], false, null, true /* enable colors */));
     //console.log('nft_mint_event: ', p0.result.value.buffer);

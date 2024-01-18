@@ -56,7 +56,7 @@
   (ok (var-get protocol-wallet-address))
 )
 
-(define-data-var liquidation_ratio uint u14000)
+(define-data-var liquidation_ratio uint u10500)
 
 (define-public (set-liquidation-ratio (ratio uint))
   (begin
@@ -96,7 +96,6 @@
     liquidation-ratio: uint, ;; the collateral/loan ratio below which liquidation can happen, with two decimals precision (140% = u14000)
     liquidation-fee: uint,  ;; additional fee taken during liquidation, two decimals precision (10% = u1000)
     owner: principal, ;; the stacks account owning this loan
-    attestors: (list 32 (tuple (dns (string-ascii 64)))),
     btc-tx-id: (optional (string-ascii 64))
   }
 )
@@ -182,8 +181,8 @@
 ;; - Increments the loan-id
 ;; - Calls the dlc-manager-contract's create-dlc function to initiate the creation
 ;; The DLC Contract will call back into the provided 'target' contract with the resulting UUID (and the provided loan-id).
-;; See scripts/setup-loan.ts for an example of calling it.
-(define-public (setup-loan (attestors (list 32 (tuple (dns (string-ascii 64))))) (value-locked uint) (refund-delay uint) (btc-fee-recipient (string-ascii 64)) (btc-fee-basis-points uint))
+;; See scripts/setup-vault.ts for an example of calling it.
+(define-public (setup-vault (value-locked uint) (refund-delay uint) (btc-fee-recipient (string-ascii 64)) (btc-fee-basis-points uint))
     (let
       (
         (liquidation-ratio (var-get liquidation_ratio))
@@ -191,9 +190,7 @@
         (loan-id (+ (var-get last-loan-id) u1))
         (target sample-protocol-contract)
         (current-loan-ids (get-creator-loan-ids tx-sender))
-          ;; Call to create-dlc returns the list of attestors, as well as the uuid of the dlc
         (uuid (unwrap! (contract-call? 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dlc-manager-v1-1 create-dlc value-locked target (var-get protocol-wallet-address) refund-delay btc-fee-recipient btc-fee-basis-points) err-contract-call-failed))
-        ;;(attestors (get attestors create-return))
       )
       (var-set last-loan-id loan-id)
       (begin
@@ -205,7 +202,6 @@
             liquidation-ratio: liquidation-ratio,
             liquidation-fee: liquidation-fee,
             owner: tx-sender,
-            attestors: attestors,
             btc-tx-id: none
           })
           (try! (set-status loan-id status-ready))

@@ -4,6 +4,8 @@ import { hex } from '@scure/base';
 import { CONFIG } from "./lib/config";
 import { ParsedTransactionResult } from "@hirosystems/clarinet-sdk";
 import { FUNDING_TX, UUID_2, registerContract, setupLoanArgs } from "./lib/dlc-helper";
+//import util from 'util'
+import { Loan, loanConvertor } from "./lib/dlc_types";
 
 const accounts = simnet.getAccounts();
 const deployer = accounts.get("deployer")!;
@@ -36,8 +38,8 @@ describe("loan setup tests", () => {
   it("ensure loan setup fails if contract is not registered", () => {
     expect(simnet.blockHeight).toBeGreaterThan(0);
 
-    const functionArgs = setupLoanArgs(undefined, 100000000, 0, undefined, 1)
-    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs, deployer);
+    const functionArgs = setupLoanArgs(100000000, 0, undefined, 1)
+    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-vault", functionArgs, deployer);
     //console.log(hex.encode(result.value.buffer))
     expect(result).toBeErr(Cl.uint(1001));
   });
@@ -46,19 +48,69 @@ describe("loan setup tests", () => {
     registerContract()
     simnet.mineEmptyBlock()
 
-    const functionArgs = setupLoanArgs(undefined, 100000000, 0, undefined, 1)
-    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs, deployer);
+    const functionArgs = setupLoanArgs(100000000, 0, undefined, 1)
+    const { result } = simnet.callPublicFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 
+      "setup-vault", 
+      functionArgs, 
+      deployer
+    );
     //console.log(hex.encode(result.value.buffer))
     expect(result.type).toBe(ClarityType.ResponseOk);
     expect(result).toStrictEqual(Cl.ok(Cl.bufferFromHex(UUID_2)));
+  });
+
+  it("ensure loans can be retrieved by creator", () => {
+    registerContract()
+    simnet.mineEmptyBlock()
+
+    const response1 = simnet.callPublicFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 
+      "setup-vault", 
+      setupLoanArgs(100000000, 0, undefined, 1), 
+      deployer
+    );
+    expect(response1.result.type).toBe(ClarityType.ResponseOk);
+    expect(response1.result).toStrictEqual(Cl.ok(Cl.bufferFromHex(UUID_2)));
+
+    const functionArgs = [
+      Cl.principal(deployer)
+    ]
+    let creatorLoans = simnet.callReadOnlyFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 
+      "get-creator-loans", functionArgs, deployer
+    );
+    const loans1:Array<any> = creatorLoans.result.list
+    //console.log('dlc closure 1: ', util.inspect(loans1, false, null, true /* enable colors */));
+    expect(loans1.length).toStrictEqual(1)
+    const loan1_1:Loan = loanConvertor(loans1[0].value.data)
+
+    const response2 = simnet.callPublicFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 
+      "setup-vault", 
+      setupLoanArgs(100000000, 0, undefined, 1), 
+      deployer
+    );
+    expect(response2.result.type).toBe(ClarityType.ResponseOk);
+
+    creatorLoans = simnet.callReadOnlyFn(
+      CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], 
+      "get-creator-loans", functionArgs, deployer
+    );
+    const loans2:Array<any> = creatorLoans.result.list
+    //console.log('dlc closure 1: ', util.inspect(loans2, false, null, true /* enable colors */));
+    expect(loans2.length).toStrictEqual(2)
+    const loan2_1:Loan = loanConvertor(loans2[0].value.data)
+    expect(loan1_1.uuid).toStrictEqual(loan2_1.uuid)
+
   });
 
   it("ensure loan can't be locked by random sender", () => {
     registerContract()
     simnet.mineEmptyBlock()
 
-    const functionArgs = setupLoanArgs(undefined, 10000, 0, undefined, 1)
-    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs, deployer);
+    const functionArgs = setupLoanArgs(10000, 0, undefined, 1)
+    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-vault", functionArgs, deployer);
     expect(result).toStrictEqual(Cl.ok(Cl.bufferFromHex(UUID_2)));
 
     const functionArgs2 = [
@@ -76,8 +128,8 @@ describe("loan setup tests", () => {
     expect(p1.result).toBeOk(Cl.principal(sender));
 
     // setup loan
-    const functionArgs2 = setupLoanArgs(undefined, 10000, 0, undefined, 1)
-    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-loan", functionArgs2, deployer);
+    const functionArgs2 = setupLoanArgs(10000, 0, undefined, 1)
+    const { result } = simnet.callPublicFn(CONFIG.VITE_DLC_UASU_LOAN_CONTRACT.split('.')[1], "setup-vault", functionArgs2, deployer);
     const val:any = result
     expect(result).toStrictEqual(Cl.ok(Cl.bufferFromHex(hex.encode(val.value.buffer))));
 

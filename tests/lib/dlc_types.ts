@@ -9,7 +9,6 @@ export type Loan = {
 	liquidityState: { liquidatable: boolean|undefined, error?:number|string, loanId?:number, btcPrice:number };
   status: string;
   vaultLoan: number;
-  vaultCollateral: number;
   liquidationRatio: number;
   liquidationFee: number;
   owner: string;
@@ -20,17 +19,27 @@ export type Loan = {
 	formattedLiquidationRatio?: string;
 	formattedVaultCollateral?:string;
 	closingTXHash?: string;
+  // seconds until an emergency refund transaction can be broadcasted. Set 0 to disable this feature.
+  refundDelay?: number;
+  // BTC address to send the BTC fees to (sends the fees to the protocol wallet if set to "0x")
+  btcFeeRecipient?: string;
+  // BTC fee basis points (1/100 of a percent) to send to the fee recipient (set 0 to disable this feature)
+  btcFeeBasisPoints?: number;
+  // amount of BTC to lock in the DLC in Satoshis
+  vaultCollateral: number;
 }
 
 export type DLC = {
   btcFeeBasisPoints: number;
   btcFeeRecipient: string;
+  // The contract that sends the request, and will accept the callback.
   callbackContractAddress: string;
   callbackContractName: string;
   closingTxId: string;
   fundingTxId: string;
   creator: string;
   outcome: number;
+  // router-wallet public key, that will trigger set-status-funded and post-close-dlc (see dlc-stack repo for more information)
   protocolWallet: string;
   refundDelay: number;
   status: number;
@@ -58,16 +67,11 @@ export function dlcConvertor(contractData:any):DLC {
   }
 }
 
-export function loanConvertor(contractData:any):Loan {
-  const data = contractData.result.value.data
+export function loanConvertor(data:any):Loan {
+  //const data = contractData.result.value.data
   //console.log('loanConvertor: ', util.inspect(data, false, null, true /* enable colors */));
-  const attestorList = []
-  for (const att of data['attestors'].list) {
-    attestorList.push(att.data.dns.data)
-  }
   return {
-    attestorList,
-    btcTxId: data['btc-tx-id'].value.data,
+    btcTxId: (data['btc-tx-id'].type !== 9) ? data['btc-tx-id'].value.data : undefined,
     liquidationFee: Number(data['liquidation-fee'].value),
     liquidationRatio: Number(data['liquidation-ratio'].value),
     liquidityState: {liquidatable: false, btcPrice: 0 },
